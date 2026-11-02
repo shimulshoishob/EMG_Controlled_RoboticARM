@@ -1,0 +1,13 @@
+# EMG armband -> xArm controller (emg_arm_control.py)
+# The app itself uses only the Python standard library (Python 3.9+).
+# Install the optional packages for the hardware you use.
+
+# --- Real xArm 1S (USB-HID or COM serial) ---
+xarm>=0.0.4
+hidapi>=0.14.0
+
+# --- Serial EMG band (Arduino/ESP32) and COM-port arm ---
+pyserial>=3.5
+
+# --- Myo armband (needs Myo BLE dongle) ---
+pyomyo

@@ -1,0 +1,5 @@
+logs/
+poses.json
+settings.json
+__pycache__/
+.venv/
