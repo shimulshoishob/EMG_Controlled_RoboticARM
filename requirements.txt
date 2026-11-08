@@ -1,13 +1,13 @@
-# EMG armband -> xArm controller (emg_arm_control.py)
-# The app itself uses only the Python standard library (Python 3.9+).
-# Install the optional packages for the hardware you use.
+# Desktop app (macOS, Windows, Linux)
+numpy
+pyqt5
+pyqtgraph
+pyserial
+psutil              # lists network adapters so Wi-Fi discovery uses the right broadcast address
+joblib
+scikit-learn>=1.9   # the models were trained with 1.9.x
+PyWavelets
 
-# --- Real xArm 1S (USB-HID or COM serial) ---
-xarm>=0.0.4
-hidapi>=0.14.0
-
-# --- Serial EMG band (Arduino/ESP32) and COM-port arm ---
-pyserial>=3.5
-
-# --- Myo armband (needs Myo BLE dongle) ---
-pyomyo
+# Robotic arm (Hiwonder xArm 1S over USB)
+xarm==0.0.4
+hidapi              # provides the `hid` module xarm uses. Do NOT install the package named "hid".
