@@ -287,6 +287,12 @@ class SafeArm:
             return False
         return pos >= hi if direction > 0 else pos <= lo
 
+    def move_to(self, servo_id, position, duration_ms):
+        """One guarded move of a single servo to a fixed position (gesture 'go to position')."""
+        if not self.homed:
+            raise ArmSafetyError("Press 'Go Home' before moving the arm")
+        return self._send(int(servo_id), position, duration_ms)
+
     def set_gripper(self, closed):
         if not self.homed:
             raise ArmSafetyError("Press 'Go Home' before using the gripper")

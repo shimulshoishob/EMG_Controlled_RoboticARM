@@ -88,7 +88,7 @@ class WindowSmokeTests(unittest.TestCase):
 
     def test_stop_button_disarms_simulated_arm(self):
         w = self.window
-        w.pages["control"].emg_check.setChecked(False)     # otherwise arming asks a modal question
+        w.pages["control"].mode.setCurrentIndex(w.pages["control"].mode.findData("keyboard"))   # otherwise arming asks a modal question
         w.toggle_arm()
         w.arm.homed = True
         w.toggle_armed()
@@ -99,7 +99,7 @@ class WindowSmokeTests(unittest.TestCase):
     def test_on_screen_pad_moves_the_simulated_arm(self):
         w = self.window
         cp = w.pages["control"]
-        cp.emg_check.setChecked(False)
+        cp.mode.setCurrentIndex(cp.mode.findData("keyboard"))
         w.toggle_arm()
         w.arm.homed = True
         w.toggle_armed()

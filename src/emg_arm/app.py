@@ -12,7 +12,8 @@ from PyQt5.QtWidgets import QApplication
 from .arm.driver import load_config
 from .settings import Settings
 from .ui import theme
-from .ui.main_window import KeyboardFilter, MainWindow, console
+from .diagnostics_log import setup_file_logging
+from .ui.main_window import MainWindow, console
 
 
 def main(argv=None):
@@ -25,6 +26,7 @@ def main(argv=None):
     app = QApplication(argv)
     app.setApplicationName("EMG Robotic Arm")
     app.setOrganizationName("BioWave")
+    setup_file_logging()
     settings = Settings()
     theme.apply_theme(app, settings.get("theme"))
     window = MainWindow(config, settings)
@@ -52,8 +54,7 @@ def main(argv=None):
             pass
 
     sys.excepthook = on_error
-    app.installEventFilter(KeyboardFilter(window))
-    app.applicationStateChanged.connect(lambda state: state != Qt.ApplicationActive and window.pressed_keys.clear())
+    app.applicationStateChanged.connect(lambda state: state != Qt.ApplicationActive and window.keyboard.release_all())
     window.show()
     theme.apply_title_bar(window)
     sys.exit(app.exec_())

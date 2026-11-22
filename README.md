@@ -14,19 +14,49 @@ python3 run.py        # macOS        |   py run.py     # Windows
 ```
 The first run creates `.venv` and installs `requirements.txt` (a few minutes, needs internet). Python 3.11+.
 
-## The five steps (left sidebar)
+## Sections (left sidebar)
 
-1. **Model** – pick the trained `.joblib`; the table shows what each gesture will do.
-2. **Armband** – choose *Wi-Fi*, *USB cable* or *Virtual armband (demo, no hardware)*. Wi-Fi is four cards:
-   1. **Give the armband your Wi-Fi** (first time only): plug it in by USB → *Check armband* → enter 2.4 GHz Wi-Fi name + password → *Send*.
-   2. **Find your armband**: *Scan network* (or type its IP).
-   3. **Access key**: *Import from secrets.h* (the key flashed into the firmware) or paste it.
-   4. **Connect**: live 8-channel scope, frames/s, packet loss, firmware warning counters. *Connection doctor* explains any failure step by step.
-3. **Robotic arm** – connect (or simulate), *Go home*.
-4. **Control** – *ARM*, then gestures/keyboard. The red **STOP** button (Space / Esc) is on every page.
-5. **Data & settings** – record raw EMG+IMU to CSV, open logs, theme.
+| Group | Section | What it is for |
+|---|---|---|
+| Overview | **Dashboard** | Armband / ESP32-S3 link, incoming data, model, detected gesture, arm, control mode, current movement, error count, recent warnings |
+| Setup | **Gesture model** | Pick the trained `.joblib`; shows how each model class is recognised as one of the ten gestures |
+| Setup | **Connection** | Armband over Wi-Fi, USB or the virtual armband (four cards, *Connection doctor*) |
+| Setup | **Robotic arm** | Connect the xArm 1S (or simulate it), *Go home*, gripper test |
+| Operate | **Arm control** | *ARM*, control mode (keys + gestures / gestures only / keyboard only), speed, global confidence, on-screen pad, key reference |
+| Operate | **Live monitor** | 8-channel EMG, model output, confidence, stable gesture, transition history, signal→prediction latency |
+| Operate | **Gesture mapping** | What each of the ten gestures does (see below) |
+| Operate | **Keyboard** | Key tester, re-assign keys, reset |
+| System | **Logs & diagnostics** | Packet rate / loss / age, firmware counters, event log, error history, save/copy log |
+| System | **Settings & data** | Motion smoothing, calibration (servo range, rest pose), export/import configuration, raw recording, session logs, theme |
 
-Gestures, keyboard map, motion smoothing and safety rules are unchanged from before (see `config/arm_config.json`; the app refuses unsafe values at start-up).
+The red **STOP** button (Space / Esc) is on every page and always works.
+
+### Gesture mapping
+
+Ten gestures: Left, Right, Up, Down, Closed Fist, Double Closed Fist, Victory Sign, Thumbs Up, Pinch, Rest.
+Each has: enabled, robot action, joint/servo, direction, speed, target position + duration (go-to-position), hold time, optional
+long-hold action, confidence threshold, and an optional *model class* (when your model names a gesture differently).
+
+Actions: move a joint while held · go to a fixed position · toggle / open / close gripper · switch Up/Down joint (shoulder ↔ elbow) ·
+go home · hold still · nothing. The editor rejects invalid values (unknown servo, speed over the cap, target outside the servo's safe range,
+two gestures driving the same joint the same way) and shows live what the gesture will do; the highlighted row is the gesture detected right now.
+Mappings are saved per user (`gesture_mapping.json` in the settings folder) and survive restarts; *Reset to defaults*, *Export…* and *Import…* are on the page.
+Mappings cannot be saved while the arm is ARMED. **Double Closed Fist → Go home is shipped disabled**; enable it deliberately.
+
+One-shot actions fire **once per gesture**: keep the gesture detected and nothing repeats; relax / change gesture to arm it again. A per-action cooldown (1.5 s) stops flicker re-triggering.
+
+### Keyboard (defaults, all re-assignable on the Keyboard page)
+
+| Keys | Action | Keys | Action |
+|---|---|---|---|
+| ← / A | base left | → / D | base right |
+| ↑ | selected joint up | ↓ | selected joint down |
+| W / S | shoulder up / down | E / Q | elbow up / down |
+| G | toggle gripper | 1 / 2 | Up/Down controls shoulder / elbow |
+| **Space / Esc** | **STOP (fixed)** | | |
+
+Hold to move, release to stop, hold several to combine. Keys only move the arm while ARMED and when no text box has focus; Ctrl/Cmd/Alt combinations are ignored.
+*Changed from before:* **D** was elbow-down and is now base-right (WASD-style); elbow-down moved to **Q**. Re-assign on the Keyboard page if you prefer the old layout.
 
 ## What was fixed for the new firmware
 
@@ -53,11 +83,14 @@ firmware/                   armband firmware (+ secrets.example.h; never commit 
 src/emg_arm/
   armband/  protocol · control · netinfo · link · serial_setup · diagnostics · fake (firmware emulator)
   arm/      driver · motion · teleop       (safety layer, smooth streaming, gesture filter)
+  control/  gestures · mapping · commands  (ten gestures, central mapping store, gesture -> command generator; no Qt)
   ml/       features · inference
-  ui/       theme · widgets · bridge · dialogs · main_window · pages/
-  session.py settings.py paths.py bootstrap.py app.py
+  ui/       theme · widgets · bridge · dialogs · keyboard · main_window · pages/
+  session.py settings.py config_bundle.py diagnostics_log.py paths.py bootstrap.py app.py
 tools/check_arm.py          read-only hardware check / nudge / glide
-tests/                      73 tests, no hardware needed
+tools/jitter_report.py      software-side base-servo jitter measurement (old vs new streaming)
+tools/native_key_check.py   macOS: injects real OS key events into the real window (see docs; unverified in CI)
+tests/                      149 tests, no hardware needed
 ```
 
 ## Tests
@@ -80,3 +113,7 @@ Includes a software copy of the firmware (`armband/fake.py`) that can lose repli
 ## Hardware safety (unchanged)
 
 Power the arm from its own supply; keep its reach clear; wear the armband on Wi-Fi, or run the laptop on battery when using USB; one program controls the arm; know the stop: Space/Esc, then the power switch (support the arm by hand). The arm never loses torque in software, on exit it parks at home.
+
+## More documentation
+
+`docs/CHANGES_AND_ARCHITECTURE.md` - codebase analysis, architecture before/after, issue list, what changed (and what was *not* verified), hardware validation checklist, limitations.

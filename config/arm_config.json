@@ -27,6 +27,12 @@
     "decel_units_per_s2": 1000,
     "command_timeout_s": 0.25,
 
+    "_jitter_comment": "Anti-jitter. min_speed_units_per_s: slowest commanded speed (slower goals are raised to it). min_lead_units: the servo is always aimed at least this far ahead; at low speed the lookahead is stretched to achieve it. Raise both (e.g. 12 / 5) if the base still buzzes at low speed; raise jerk_units_per_s3 limits via the Settings page.",
+    "min_speed_units_per_s": 8,
+    "min_lead_units": 3,
+    "match_duration": true,
+    "jerk_units_per_s3": 6000,
+
     "min_battery_voltage": 6.6
   },
 
@@ -54,6 +60,7 @@
     "prediction_timeout_s": 0.3,
     "emg_timeout_s": 0.3,
     "max_continuous_move_s": 6.0,
+    "reversal_guard_s": 0.2,
     "ramp_start": 0.5,
     "ramp_time_s": 0.6
   }

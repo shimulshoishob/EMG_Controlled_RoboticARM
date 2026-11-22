@@ -1,4 +1,4 @@
-"""Step 1 - Model: pick the trained Random Forest and see what each gesture will do."""
+"""Gesture model: pick the trained Random Forest and see what each gesture will do."""
 
 from __future__ import annotations
 
@@ -10,20 +10,17 @@ from PyQt5.QtWidgets import (QFileDialog, QHBoxLayout, QHeaderView, QListWidget,
 
 from ...ml.inference import LoadedModel, find_models
 from ...paths import MODELS_DIR, PROJECT_ROOT
+from ...control.commands import CommandGenerator
+from ...control.gestures import BY_ID
 from ..widgets import Banner, Card, button, label
-
-ACTION_TEXT = {
-    "left": "Rotate base left", "right": "Rotate base right", "up": "Selected joint up",
-    "down": "Selected joint down", "grip": "Hold ≈0.6 s then relax: toggle gripper  ·  hold ≈1.8 s: switch joint",
-    "switch": "Switch shoulder / elbow", "rest": "Hold still", None: "Ignored (not mapped)"}
 
 
 class ModelPage(QWidget):
     model_requested = pyqtSignal(str)
 
-    def __init__(self, settings, parent=None):
+    def __init__(self, settings, store, servo_names, parent=None):
         super().__init__(parent)
-        self.settings = settings
+        self.settings, self.store, self.servo_names = settings, store, servo_names
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(16)
@@ -48,11 +45,13 @@ class ModelPage(QWidget):
         self.card_pick = c1
         root.addWidget(c1)
 
-        c2 = Card("What each gesture does", "Names come from the model; the app matches them to arm actions.")
-        self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["Gesture in the model", "Arm action"])
+        c2 = Card("What each gesture does", "Class names come from the model and are matched to the ten study gestures; "
+                  "what each gesture does is set under Gesture mapping.")
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Class in the model", "Recognised as", "Robot action"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.table.verticalHeader().hide()
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.NoSelection)
@@ -103,7 +102,11 @@ class ModelPage(QWidget):
         self.table.setRowCount(len(loaded.class_names))
         for r, cls in enumerate(loaded.class_names):
             self.table.setItem(r, 0, QTableWidgetItem(cls))
-            self.table.setItem(r, 1, QTableWidgetItem(ACTION_TEXT.get(mapping.get(cls), "")))
+            gid = mapping.get(cls)
+            m = self.store.get(gid)
+            self.table.setItem(r, 1, QTableWidgetItem(BY_ID[gid].name if gid else "not recognised"))
+            self.table.setItem(r, 2, QTableWidgetItem(
+                CommandGenerator.describe(m, self.servo_names) if m else "Ignored (not mapped)"))
         self.table.resizeRowsToContents()
         for i in range(self.list.count()):
             if self.list.item(i).data(Qt.UserRole) == loaded.path:

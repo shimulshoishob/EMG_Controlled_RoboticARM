@@ -1,9 +1,9 @@
-"""Step 4 - Control: arm the robot and watch what the gestures do."""
+"""Arm control: arm the robot, choose the control mode, watch what the gestures do."""
 
 from __future__ import annotations
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QProgressBar, QSpinBox,
+from PyQt5.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QProgressBar, QSpinBox,
                              QVBoxLayout, QWidget)
 
 from .. import theme
@@ -76,11 +76,18 @@ class ControlPage(QWidget):
         row.addWidget(live, 3, Qt.AlignTop)
 
         opts = Card("Settings")
-        self.emg_check = QCheckBox("Use EMG gestures (off = keyboard only)")
-        self.emg_check.setChecked(True)
-        opts.add(self.emg_check)
         form = QGridLayout()
         form.setHorizontalSpacing(12)
+        form.addWidget(label("Control mode", "muted"), 3, 0)
+        self.mode = QComboBox()
+        self.mode.addItem("Keys + gestures", "hybrid")
+        self.mode.addItem("Gestures only", "gestures")
+        self.mode.addItem("Keyboard only", "keyboard")
+        self.mode.setToolTip("Keys + gestures: the keyboard overrides gestures. Gestures only: keys are ignored (except STOP). "
+                             "Keyboard only: EMG is ignored.")
+        self.mode.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.mode.setMinimumContentsLength(10)
+        form.addWidget(self.mode, 3, 1)
         form.addWidget(label("Up / Down moves", "muted"), 0, 0)
         self.vertical = QComboBox()
         for name in config["vertical_joints"]:
@@ -90,6 +97,7 @@ class ControlPage(QWidget):
         self.speed = QSpinBox()
         self.speed.setRange(10, int(config["arm"]["hard_max_speed_units_per_s"]))
         self.speed.setSingleStep(10)
+        self.speed.editingFinished.connect(self.speed.clearFocus)
         self.speed.setValue(int(config["arm"]["default_speed_units_per_s"]))
         form.addWidget(self.speed, 1, 1)
         form.addWidget(label("Min. confidence", "muted"), 2, 0)
@@ -97,6 +105,7 @@ class ControlPage(QWidget):
         self.conf.setRange(40, 99)
         self.conf.setSuffix(" %")
         self.conf.setValue(gesture_min_conf * 100)
+        self.conf.editingFinished.connect(self.conf.clearFocus)
         form.addWidget(self.conf, 2, 1)
         opts.add(form)
         opts.add(label("Raise the confidence if the arm moves when you are relaxed; lower it if real gestures are ignored.", "caption", wrap=True))
@@ -110,10 +119,11 @@ class ControlPage(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(8)
-        rows = [("Base", [("left", "◀  Left  (←)"), ("right", "Right  (→)  ▶")]),
-                ("Selected joint", [("up", "▲  Up  (↑)"), ("down", "▼  Down  (↓)")]),
-                ("Shoulder", [("shoulder_up", "▲  W"), ("shoulder_down", "▼  S")]),
-                ("Elbow", [("elbow_up", "▲  E"), ("elbow_down", "▼  D")])]
+        rows = [("Base", [("left", "◀  Left"), ("right", "Right  ▶")]),
+                ("Selected joint", [("up", "▲  Up"), ("down", "▼  Down")])]
+        for name in config["vertical_joints"]:
+            rows.append((name.title(), [(f"{name}_up", "▲  Up"), (f"{name}_down", "▼  Down")]))
+        self.pad_texts = {motion: text for _n, items in rows for motion, text in items}
         for r, (name, items) in enumerate(rows):
             grid.addWidget(label(name, "muted"), r, 0)
             for c, (motion, text) in enumerate(items):
@@ -123,7 +133,7 @@ class ControlPage(QWidget):
                 b.released.connect(lambda m=motion: self.pad_released.emit(m))
                 grid.addWidget(b, r, c + 1)
                 self.pad_buttons[motion] = b
-        self.grip_btn = button("Toggle gripper  (G)", slot=self.grip_pressed.emit)
+        self.grip_btn = button("Toggle gripper", slot=self.grip_pressed.emit)
         self.grip_btn.setMinimumHeight(38)
         grid.addWidget(self.grip_btn, len(rows), 1, 1, 2)
         grid.setColumnStretch(1, 1)
@@ -131,13 +141,21 @@ class ControlPage(QWidget):
         pad.add(grid)
         root.addWidget(pad)
 
-        keys = Card("Keyboard (works while ARMED, keys can be combined)")
-        keys.add(label(
-            "←  →   rotate base          ↑  ↓   selected joint (1 = shoulder, 2 = elbow)\n"
-            "W  S   shoulder up / down   E  D   elbow up / down          G   toggle gripper\n"
-            "Space or Esc   EMERGENCY STOP\n\n"
-            "Gestures: fist ≈ 0.6 s then relax = gripper · keep the fist ≈ 1.8 s = switch joint · Rest = hold still", "mono", wrap=True))
+        keys = Card("Keyboard reference", "Works while ARMED and no text box has focus; hold a key to move, release to stop, "
+                    "hold several to combine joints. Change keys on the Keyboard page.")
+        self.keys_text = label("", "mono", wrap=True)
+        keys.add(self.keys_text)
         self.key_label = label("Keyboard: idle", "caption")
         keys.add(self.key_label)
         root.addWidget(keys)
         root.addStretch(1)
+
+    def set_key_labels(self, keymap, pad_names: dict):
+        """Show the current key assignments on the pad buttons and in the reference card."""
+        for motion, b in self.pad_buttons.items():
+            action = pad_names.get(motion)
+            keys = keymap.label_for(action).split(" / ")[0] if action else ""   # first key only: the pad stays compact
+            b.setText(f"{self.pad_texts[motion]}   ({keys})" if keys and keys != "—" else self.pad_texts[motion])
+        self.grip_btn.setText(f"Toggle gripper   ({keymap.label_for('gripper_toggle').split(' / ')[0]})")
+        self.keys_text.setText("\n".join(f"{a.label:<30} {keymap.label_for(a.id)}" for a in keymap.actions)
+                               + "\nSTOP                           Space / Esc")

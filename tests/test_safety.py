@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from emg_arm.arm.driver import ArmSafetyError, SafeArm, SimulatedBackend, load_config  # noqa: E402
 from emg_arm.arm.motion import MotionStreamer  # noqa: E402
 from emg_arm.arm.teleop import GestureFilter, Teleop, canonical_gesture  # noqa: E402
+from emg_arm.control.commands import CommandGenerator  # noqa: E402
+from emg_arm.control.mapping import MappingStore  # noqa: E402
 
 CONFIG = load_config()
 
@@ -126,101 +128,183 @@ class DriverTests(unittest.TestCase):
         self.assertTrue(arm.gripper_closed)
 
 
+def new_generator(**disabled):
+    """CommandGenerator on the default mapping; keyword args name gestures to disable."""
+    store = MappingStore(CONFIG)
+    for gid in disabled:
+        store.mappings[gid].enabled = False
+    return CommandGenerator(store, CONFIG["filter"]["grip_cooldown_s"]), store
+
+
+def make_filter(store=None):
+    store = store or MappingStore(CONFIG)
+    return GestureFilter(CONFIG["filter"], resolver=store.resolve, is_continuous=store.is_continuous,
+                         conf_for=store.min_confidence)
+
+
+def moves(gen, f, t):
+    return [m.gesture_id for m in gen.generate(f, t).moves]
+
+
+def shots(gen, f, t):
+    return [o.action for o in gen.generate(f, t).oneshots]
+
+
 class GestureTests(unittest.TestCase):
     def test_label_names_from_trained_models(self):
         cases = {"Left": "left", "Right": "right", "up": "up", "Move_Up": "up", "down": "down",
-                 "Move_Down": "down", "fist_close": "grip", "Fist_Close": "grip", "Rest": "rest",
-                 "wave_out": None}
+                 "Move_Down": "down", "dow": "down", "fist_close": "closed_fist", "Fist_Close": "closed_fist",
+                 "Closed Fist": "closed_fist", "Double Closed Fist": "double_fist", "Victory Sign": "victory",
+                 "Thumbs Up": "thumbs_up", "Pinch using thumb and index finger": "pinch", "Rest": "rest",
+                 "rest": "rest", "wave_out": None}
         for label, expected in cases.items():
             self.assertEqual(canonical_gesture(label), expected, label)
 
     def test_needs_stable_majority(self):
-        f = GestureFilter(CONFIG["filter"])
+        f = make_filter()
+        gen, _ = new_generator()
         f.add_prediction("Left", 0.95, 0.0)
-        self.assertIsNone(f.motion(0.0), "one prediction must not move the arm")
+        self.assertEqual(moves(gen, f, 0.0), [], "one prediction must not move the arm")
         t = feed(f, "Left", 0.05, 4)
-        self.assertEqual(f.motion(t), "left")
+        self.assertEqual(moves(gen, f, t), ["left"])
 
     def test_low_confidence_ignored(self):
-        f = GestureFilter(CONFIG["filter"])
+        f = make_filter()
+        gen, _ = new_generator()
         t = feed(f, "Left", 0.0, 10, conf=0.4)
-        self.assertIsNone(f.motion(t))
+        self.assertEqual(moves(gen, f, t), [])
 
     def test_stale_predictions_stop_motion(self):
-        f = GestureFilter(CONFIG["filter"])
+        f = make_filter()
+        gen, _ = new_generator()
         t = feed(f, "Left", 0.0, 6)
-        self.assertEqual(f.motion(t), "left")
-        self.assertIsNone(f.motion(t + 1.0))
+        self.assertEqual(moves(gen, f, t), ["left"])
+        self.assertEqual(moves(gen, f, t + 1.0), [])
 
     def test_stuck_gesture_locks_out_until_change(self):
-        f = GestureFilter(CONFIG["filter"])
-        t = feed(f, "Left", 0.0, 200)  # 10 s of continuous Left
-        self.assertIsNone(f.motion(t))
+        f = make_filter()
+        gen, _ = new_generator()
+        t = 0.0
+        for _ in range(200):                           # 10 s of continuous Left
+            t = feed(f, "Left", t, 1)
+            gen.generate(f, t)
+        self.assertEqual(moves(gen, f, t), [])
         t = feed(f, "Rest", t, 6)
         t = feed(f, "Left", t, 6)
-        self.assertEqual(f.motion(t), "left")
+        self.assertEqual(moves(gen, f, t), ["left"])
 
     def test_short_fist_does_not_fire(self):
-        f = GestureFilter(CONFIG["filter"])
+        f = make_filter()
+        gen, _ = new_generator()
         t = feed(f, "fist_close", 0.0, 6)  # ~0.1 s stable
-        self.assertFalse(f.take_grip_toggle(t))
+        self.assertEqual(shots(gen, f, t), [])
+
+    def test_per_gesture_confidence_threshold(self):
+        store = MappingStore(CONFIG)
+        store.mappings["left"].min_confidence = 0.9
+        f = make_filter(store)
+        t = feed(f, "Left", 0.0, 10, conf=0.8)         # above the global 0.65, below Left's own 0.9
+        self.assertIsNone(f.stable)
+        t = feed(f, "Left", t, 10, conf=0.95)
+        self.assertEqual(f.stable, "left")
 
 
 class GestureFilterSmoothingTests(unittest.TestCase):
     def test_switch_labels(self):
-        self.assertEqual(canonical_gesture("Thumbs_Up"), "switch")
-        self.assertEqual(canonical_gesture("Fist_Open_Fast"), "switch")
+        self.assertEqual(canonical_gesture("Thumbs_Up"), "thumbs_up")
+        self.assertEqual(canonical_gesture("Fist_Open_Fast"), "thumbs_up")
 
     def test_single_flicker_keeps_motion(self):
-        f = GestureFilter(CONFIG["filter"])
+        f = make_filter()
+        gen, _ = new_generator()
         t = feed(f, "Left", 0.0, 6)
         since = f.stable_since
         for label in ("Rest", "Right"):  # two bad votes inside a held Left
             f.add_prediction(label, 0.95, t)
             t += 0.05
-        self.assertEqual(f.motion(t), "left", "hysteresis should keep the motion")
+        self.assertEqual(moves(gen, f, t), ["left"], "hysteresis should keep the motion")
         self.assertEqual(f.stable_since, since)
 
     def test_short_dropout_keeps_ramp(self):
-        f = GestureFilter(CONFIG["filter"])
+        f = make_filter()
+        gen, _ = new_generator()
         t = feed(f, "Left", 0.0, 10)
         since = f.stable_since
         t = feed(f, "Rest", t, 3, conf=0.3)  # low-confidence blip
-        self.assertIsNone(f.motion(t))
+        self.assertEqual(moves(gen, f, t), [])
         t = feed(f, "Left", t, 4)  # back to 4 of 5 votes within the grace time
-        self.assertEqual(f.motion(t), "left")
+        self.assertEqual(moves(gen, f, t), ["left"])
         self.assertEqual(f.stable_since, since, "ramp should continue after a short blip")
 
     def test_fist_release_toggles_gripper(self):
-        f = GestureFilter(CONFIG["filter"])
-        t = feed(f, "fist_close", 0.0, 20)  # ~0.85 s stable
-        self.assertFalse(f.take_grip_toggle(t), "fires on release, not while held")
+        f = make_filter()
+        gen, _ = new_generator(thumbs_up=True)           # no dedicated switch gesture: legacy fist behaviour
+        t = 0.0
+        for _ in range(20):                              # ~0.85 s stable
+            t = feed(f, "fist_close", t, 1)
+            self.assertEqual(shots(gen, f, t), [], "fires on release, not while held")
         t = feed(f, "Rest", t, 5)
-        self.assertTrue(f.take_grip_toggle(t))
-        self.assertFalse(f.take_switch(t))
+        fired = []
+        for _ in range(3):
+            fired += shots(gen, f, t)
+            t += 0.05
+        self.assertEqual(fired, ["gripper_toggle"])
 
     def test_long_fist_switches_joint_not_gripper(self):
-        f = GestureFilter(CONFIG["filter"])
-        switched = 0
-        t = 0.0
+        f = make_filter()
+        gen, _ = new_generator(thumbs_up=True)
+        fired, t = [], 0.0
         for _ in range(60):  # 3 s fist
             f.add_prediction("fist_close", 0.95, t)
-            switched += f.take_switch(t)
+            fired += shots(gen, f, t)
             t += 0.05
-        self.assertEqual(switched, 1)
+        self.assertEqual(fired, ["switch_joint"])
         t = feed(f, "Rest", t, 5)
-        self.assertFalse(f.take_grip_toggle(t))
+        self.assertEqual(shots(gen, f, t), [], "no gripper toggle after a long hold")
 
-    def test_immediate_grip_mode(self):
-        cfg = dict(CONFIG["filter"], switch_hold_s=0.0)
-        f = GestureFilter(cfg)
-        fired = 0
-        t = 0.0
+    def test_long_fist_defers_to_a_dedicated_switch_gesture(self):
+        f = make_filter()
+        gen, _ = new_generator()                         # thumbs_up -> switch_joint is enabled
+        gen.available = None
+        fired, t = [], 0.0
         for _ in range(60):
             f.add_prediction("fist_close", 0.95, t)
-            fired += f.take_grip_toggle(t)
+            fired += shots(gen, f, t)
             t += 0.05
-        self.assertEqual(fired, 1)
+        self.assertEqual(fired, ["gripper_toggle"], "fires once at the hold time, joint switch comes from Thumbs Up")
+
+    def test_gesture_stays_detected_fires_once(self):
+        f = make_filter()
+        gen, _ = new_generator()
+        fired, t = [], 0.0
+        for _ in range(200):                             # 10 s with the fist held
+            f.add_prediction("fist_close", 0.95, t)
+            fired += shots(gen, f, t)
+            t += 0.05
+        self.assertEqual(len(fired), 1)
+
+    def test_oneshot_cooldown_blocks_rapid_retrigger(self):
+        f = make_filter()
+        gen, _ = new_generator()
+        fired, t = [], 0.0
+        for _ in range(3):                               # fist, rest, fist, rest, ... faster than the cooldown
+            for _ in range(16):
+                f.add_prediction("fist_close", 0.95, t)
+                fired += shots(gen, f, t)
+                t += 0.05
+            for _ in range(8):
+                f.add_prediction("rest", 0.95, t)
+                fired += shots(gen, f, t)
+                t += 0.05
+        # cycles repeat every 1.2 s: the 2nd trigger lands inside the 1.5 s cooldown of the 1st and is
+        # blocked; the 3rd is 2.4 s after the 1st and is allowed.
+        self.assertEqual(len(fired), 2)
+
+    def test_disabled_mapping_does_nothing(self):
+        f = make_filter()
+        gen, _ = new_generator(left=True)
+        t = feed(f, "Left", 0.0, 8)
+        self.assertEqual(moves(gen, f, t), [])
 
 
 class StreamerTests(unittest.TestCase):
@@ -280,9 +364,10 @@ class TeleopTests(unittest.TestCase):
     def setUp(self):
         self.arm, self.backend = make_arm()
         self.arm.go_home()
-        self.filter = GestureFilter(CONFIG["filter"])
+        self.store = MappingStore(CONFIG)
+        self.filter = make_filter(self.store)
         self.streamer = MotionStreamer(self.arm, CONFIG["arm"])
-        self.teleop = Teleop(self.arm, self.filter, CONFIG, self.streamer)
+        self.teleop = Teleop(self.arm, self.filter, CONFIG, self.streamer, self.store)
 
     def tick(self, t, n=1, **kw):
         for _ in range(n):
@@ -324,6 +409,7 @@ class TeleopTests(unittest.TestCase):
         self.assertEqual(self.teleop.switch_vertical(), "elbow")
 
     def test_emg_long_fist_switches_joint(self):
+        self.store.mappings["thumbs_up"].enabled = False     # no dedicated switch gesture
         self.teleop.armed = True
         t, switched = 0.0, None
         for _ in range(60):

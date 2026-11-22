@@ -46,6 +46,16 @@ class MotionStreamer:
         self.decel = float(arm_cfg.get("decel_units_per_s2", 1000))
         self.jerk = float(arm_cfg.get("jerk_units_per_s3", 6000))
         self.command_timeout = float(arm_cfg.get("command_timeout_s", 0.25))
+        # Anti-jitter (all live-tunable via apply_tuning):
+        #  min_speed:  slowest commanded speed; slower goals are raised to it, because a servo asked to
+        #              creep a fraction of a unit per packet stutters (stop-go) instead of gliding.
+        #  min_lead:   the target is always at least this many units ahead of the setpoint. At low speed
+        #              the lookahead is stretched to achieve it, so integer rounding of the target
+        #              (+-0.5 unit) stays a small fraction of the commanded step.
+        self.min_speed = float(arm_cfg.get("min_speed_units_per_s", 8))
+        self.min_lead = float(arm_cfg.get("min_lead_units", 3))
+        self.max_lookahead = 0.5
+        self.match_duration = bool(arm_cfg.get("match_duration", True))
         if self.period < MIN_WRITE_GAP_S:
             raise ArmSafetyError(f"stream_period_ms must be at least {MIN_WRITE_GAP_S * 1000:.0f}")
         if not self.period <= self.lookahead <= 0.5:
@@ -72,6 +82,20 @@ class MotionStreamer:
         with self._goal_lock:
             self._goal = goal
             self._goal_t = self.clock() if now is None else now
+
+    def apply_tuning(self, **values):
+        """Change smoothing parameters while running (from the Settings page). Invalid values are
+        refused so a typo can never make the arm unsafe."""
+        new = {"lookahead": self.lookahead, "accel": self.accel, "decel": self.decel, "jerk": self.jerk,
+               "min_speed": self.min_speed, "min_lead": self.min_lead}
+        new.update({k: float(v) for k, v in values.items() if k in new})
+        if not self.period <= new["lookahead"] <= self.max_lookahead:
+            raise ArmSafetyError("lookahead must be between the stream period and 500 ms")
+        if min(new["accel"], new["decel"], new["jerk"]) <= 0 or new["min_speed"] < 0 or new["min_lead"] < 0:
+            raise ArmSafetyError("accel/decel/jerk must be positive; min speed and lead cannot be negative")
+        with self._step_lock:
+            for key, value in new.items():
+                setattr(self, key, value)
 
     def halt(self):
         """Stop at once (emergency stop / disarm): every moving servo is told to
@@ -101,7 +125,7 @@ class MotionStreamer:
         with self._step_lock:
             if self.error is not None:
                 return
-            setpoints, leads = {}, {}
+            setpoints, vels = {}, {}
             for sid in set(goal) | set(self._vel):
                 v = self._vel.get(sid, 0.0)
                 g = goal.get(sid, 0.0)
@@ -110,6 +134,7 @@ class MotionStreamer:
                 lo, hi = self.arm.limits[sid]
                 p = self.arm.setpoint(sid)
                 if g:
+                    g = math.copysign(max(abs(g), self.min_speed), g)   # no creeping
                     # Never go faster than the S-curve can stop from within the
                     # room left, so the joint eases into its soft limit.
                     room = max(0.0, hi - p if g > 0 else p - lo)
@@ -121,7 +146,7 @@ class MotionStreamer:
                     # curve only creeps over that last bit).
                     p, v, a = (hi if v > 0 else lo), 0.0, 0.0
                 setpoints[sid] = p
-                leads[sid] = v * self.lookahead
+                vels[sid] = v
                 if v == 0.0 and a == 0.0:
                     self._vel.pop(sid, None)  # this packet is its final "stop here"
                     self._acc.pop(sid, None)
@@ -130,14 +155,41 @@ class MotionStreamer:
                     self._acc[sid] = a
             if not setpoints:
                 return
+            lookahead = self._lookahead_for(vels.values())
+            leads = {sid: v * lookahead for sid, v in vels.items()}
+            if self.match_duration and len(vels) == 1:
+                lookahead, leads = self._match_duration(next(iter(vels)), setpoints, vels, lookahead, leads)
             try:
-                self.arm.stream(setpoints, leads, self.lookahead * 1000.0)
+                self.arm.stream(setpoints, leads, lookahead * 1000.0)
             except Exception as exc:
                 self.error = exc
                 self._vel.clear()
                 self._acc.clear()
                 with self._goal_lock:
                     self._goal = {}
+
+    def _match_duration(self, sid, setpoints, vels, lookahead, leads):
+        """One servo moving (the usual case): the arm sends integer targets, so the aimed-at lead is
+        rounded to a whole unit. Choose the packet duration from the rounded lead so the commanded
+        speed is exactly v, instead of v +- rounding noise (several percent at low speed)."""
+        v, p = vels[sid], setpoints[sid]
+        lo, hi = self.arm.limits[sid]
+        target = round(min(hi, max(lo, p + leads[sid])))
+        lead = target - p
+        if abs(lead) < 1.0 or lead * v <= 0:
+            return lookahead, leads                  # at a limit or stopping: keep the plain packet
+        duration = lead / v
+        if not 0.5 * lookahead <= duration <= min(self.max_lookahead, 1.5 * lookahead):
+            return lookahead, leads
+        return duration, {sid: lead}
+
+    def _lookahead_for(self, velocities):
+        """Lookahead for this packet: the configured one, stretched when the slowest moving servo
+        would otherwise be aimed less than min_lead units ahead."""
+        slowest = min((abs(v) for v in velocities if v), default=0.0)
+        if slowest <= 0.0 or self.min_lead <= 0.0:
+            return self.lookahead
+        return min(self.max_lookahead, max(self.lookahead, self.min_lead / slowest))
 
     def _stop_distance(self, speed):
         """Distance an S-curve stop from `speed` (starting at zero acceleration) takes."""

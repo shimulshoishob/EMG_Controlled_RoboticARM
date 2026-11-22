@@ -9,47 +9,61 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PyQt5.QtCore import QEvent, QObject, Qt, QTimer
-from PyQt5.QtWidgets import (QApplication, QButtonGroup, QFrame, QHBoxLayout, QLineEdit, QMainWindow, QMessageBox,
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtWidgets import (QApplication, QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QMainWindow, QMessageBox,
                              QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import __version__
 from ..arm.driver import ArmSafetyError, SafeArm, SimulatedBackend, XArmBackend
 from ..arm.motion import MotionStreamer
-from ..arm.teleop import GestureFilter, Teleop, canonical_gesture
+from ..arm.teleop import GestureFilter, Teleop
 from ..armband.link import LinkState
+from ..config_bundle import effective_config, export_bundle, import_bundle
+from ..control.commands import CommandGenerator
+from ..control.gestures import BY_ID
+from ..control.mapping import MappingError, MappingStore
+from ..diagnostics_log import DiagnosticsLog
 from ..ml.inference import InferenceWorker, ModelError, load_model
 from ..paths import LOG_DIR
 from ..session import RawRecorder, SessionLog
 from . import theme
 from .bridge import ArmbandBridge
+from .keyboard import KeyboardController, KeyMap, build_actions
 from .pages.arm_page import ArmPage
 from .pages.armband_page import ArmbandPage
 from .pages.control_page import ControlPage
+from .pages.dashboard_page import DashboardPage
 from .pages.data_page import DataPage
+from .pages.diagnostics_page import DiagnosticsPage
+from .pages.keyboard_page import KeyboardPage
+from .pages.mapping_page import MappingPage
 from .pages.model_page import ModelPage
+from .pages.monitor_page import MonitorPage
 from .widgets import Chip, Dot, button, label
 
 SAMPLE_RATE = 500
 
-KEY_MOTIONS = {Qt.Key_Left: "left", Qt.Key_Right: "right", Qt.Key_Up: "up", Qt.Key_Down: "down",
-               Qt.Key_W: "shoulder_up", Qt.Key_S: "shoulder_down", Qt.Key_E: "elbow_up", Qt.Key_D: "elbow_down"}
-KEY_NAMES = {Qt.Key_Left: "←", Qt.Key_Right: "→", Qt.Key_Up: "↑", Qt.Key_Down: "↓",
-             Qt.Key_W: "W", Qt.Key_S: "S", Qt.Key_E: "E", Qt.Key_D: "D"}
-STOP_KEYS = (Qt.Key_Space, Qt.Key_Escape)
-
+# (key, sidebar text, page title, lead text, sidebar group)
 PAGES = [
-    ("model", "1  Model", "Choose the gesture model",
-     "The trained Random Forest that recognises your gestures from the EMG signal."),
-    ("armband", "2  Armband", "Connect the armband",
-     "Four short steps: Wi-Fi once, find it, enter the key, connect. Then check the live signal."),
-    ("arm", "3  Robotic arm", "Connect the robotic arm",
-     "Connect the xArm 1S (or simulate it) and send it to its home pose."),
-    ("control", "4  Control", "Control the arm",
-     "Arm the robot, then move it with gestures or the keyboard. Stop at any time with Space or the red button."),
-    ("data", "5  Data && settings", "Data & settings",
-     "Record raw signals for analysis, find your session logs, and choose the appearance."),
+    ("dashboard", "Dashboard", "Dashboard", "The state of the whole system at a glance.", "OVERVIEW"),
+    ("model", "Gesture model", "Gesture model", "The trained Random Forest that recognises your gestures from the EMG signal.", "SETUP"),
+    ("armband", "Connection", "Connection management",
+     "Four short steps: Wi-Fi once, find it, enter the key, connect. Then check the live signal.", "SETUP"),
+    ("arm", "Robotic arm", "Robotic arm", "Connect the xArm 1S (or simulate it) and send it to its home pose.", "SETUP"),
+    ("control", "Arm control", "Arm control",
+     "Arm the robot, then move it with gestures or the keyboard. Stop at any time with Space or the red button.", "OPERATE"),
+    ("monitor", "Live monitor", "Live monitor", "EMG signal, recognised gesture, confidence and transitions.", "OPERATE"),
+    ("mapping", "Gesture mapping", "Gesture mapping", "Choose what the arm does for each of the ten gestures.", "OPERATE"),
+    ("keyboard", "Keyboard", "Keyboard control", "Key reference, key tester and shortcut configuration.", "OPERATE"),
+    ("diagnostics", "Logs && diagnostics", "Logs & diagnostics", "Packet statistics, latency, event log and error history.", "SYSTEM"),
+    ("data", "Settings && data", "Settings & data",
+     "Motion smoothing, calibration, configuration files, recording, logs and appearance.", "SYSTEM"),
 ]
+
+# Control-page pad button -> keyboard action id (for showing the assigned keys on the buttons)
+PAD_ACTIONS = {"left": "base_left", "right": "base_right", "up": "joint_up", "down": "joint_down",
+               "shoulder_up": "shoulder_up", "shoulder_down": "shoulder_down",
+               "elbow_up": "elbow_up", "elbow_down": "elbow_down"}
 
 
 def console(message):
@@ -67,34 +81,24 @@ def xarm_plugged_in():
         return False
 
 
-class KeyboardFilter(QObject):
-    """App-wide key handling so STOP works whichever widget has focus."""
-
-    def __init__(self, window):
-        super().__init__()
-        self.window = window
-
-    def eventFilter(self, obj, event):
-        etype = event.type()
-        if etype in (QEvent.KeyPress, QEvent.KeyRelease):
-            armed = bool(self.window.teleop and self.window.teleop.armed)
-            if QApplication.activeWindow() is not self.window:
-                return False
-            if not armed and isinstance(QApplication.focusWidget(), QLineEdit):
-                return False
-            return self.window.handle_key(event, etype == QEvent.KeyPress)
-        if etype == QEvent.WindowDeactivate:
-            self.window.pressed_keys.clear()
-        return False
-
-
 class MainWindow(QMainWindow):
-    def __init__(self, config: dict, settings):
+    def __init__(self, config: dict, settings, settings_dir=None):
         super().__init__()
-        self.config, self.settings = config, settings
+        self.base_config = config
+        self.config = effective_config(config, settings)       # user calibration, never wider than shipped limits
+        self.settings = settings
+        folder = Path(settings_dir) if settings_dir else Path(settings.path).parent
         self.setWindowTitle("EMG Robotic Arm - BioWave research console")
-        self.resize(1240, 860)
-        self.setMinimumSize(980, 680)
+        self.resize(1280, 880)
+        self.setMinimumSize(1100, 700)   # widest page needs ~1100 px; 1366x768 laptops and MacBooks are wider
+
+        # ---- shared services
+        self.diag = DiagnosticsLog()
+        self.mapping = MappingStore(self.config, folder / "gesture_mapping.json")
+        self.keymap = KeyMap(build_actions(self.config), folder / "keymap.json")
+        for warning in (self.mapping.load_warning, self.keymap.load_warning):
+            if warning:
+                self.diag.add("warning", "app", warning)
 
         # ---- model / armband state
         self.loaded = None
@@ -107,35 +111,51 @@ class MainWindow(QMainWindow):
         self.baseline = None
         self.last_batch_t = 0.0
         self.link_state = LinkState.IDLE
+        self.last_link_message = ""
+        self.last_stats = None
         self.bridge = ArmbandBridge(self)
         self.recorder = None
         self.inference = InferenceWorker(SAMPLE_RATE)
         self.inference.prediction_ready.connect(self.on_prediction)
-        self.inference.error.connect(lambda m: self.pages["control"].note_label.setText(m))
+        self.inference.error.connect(self._inference_error)
         self.inference.start()
+        self.last_prediction = ("", 0.0, None)
+        self.model_gestures = None
+        self._stale_logged = False
 
         # ---- arm state
         self.arm = None
         self.streamer = None
-        self.gesture_filter = GestureFilter(config["filter"])
+        self.gesture_filter = GestureFilter(self.config["filter"], resolver=self.mapping.resolve,
+                                            is_continuous=self.mapping.is_continuous,
+                                            conf_for=self.mapping.min_confidence)
+        saved_conf = float(settings.get("min_confidence") or 0.0)
+        if 0.4 <= saved_conf <= 0.99:
+            self.gesture_filter.min_conf = saved_conf
         self.teleop = None
         self.home_busy_until = 0.0
         self.parking = None
         self.park_aborted = False
         self.close_ready = False
-        self.pressed_keys = {}
         self.pad_held = {}
         self.key_grip_pending = False
         self.last_motion_t = 0.0
+        self.last_status = {"motion": None, "gesture": None}
         self.session_log = None
 
         self._build()
+        self.keyboard = KeyboardController(self, self.keymap, self.is_armed, self.emergency_stop)
+        self.keyboard.held_changed.connect(self._keys_held_changed)
+        self.keyboard.ignored.connect(self._key_ignored)
+        self.pages["keyboard"].attach(self.keyboard)
+        self.pages["control"].set_key_labels(self.keymap, PAD_ACTIONS)
         self.bridge.frames.connect(self.on_batch)
         self.bridge.state.connect(self.on_link_state)
+        self.bridge.stats.connect(self.on_link_stats)
 
         self.control_timer = QTimer(self)
         self.control_timer.setTimerType(Qt.PreciseTimer)
-        self.control_timer.setInterval(int(config["arm"]["control_period_ms"]))
+        self.control_timer.setInterval(int(self.config["arm"]["control_period_ms"]))
         self.control_timer.timeout.connect(self.control_tick)
         self.control_timer.start()
         self.battery_timer = QTimer(self)
@@ -145,12 +165,20 @@ class MainWindow(QMainWindow):
         self.record_timer = QTimer(self)
         self.record_timer.setInterval(500)
         self.record_timer.timeout.connect(self._update_recording)
+        self.ui_timer = QTimer(self)                        # dashboard + diagnostics refresh (4 Hz, cheap)
+        self.ui_timer.setInterval(250)
+        self.ui_timer.timeout.connect(self.refresh_dashboard)
+        self.ui_timer.start()
 
-        self.go_to("model")
+        self.diag.add("info", "app", f"EMG Robotic Arm {__version__} started on {sys.platform}")
+        self.go_to("dashboard")
         last = settings.get("last_model")
         if last and Path(last).exists():
             QTimer.singleShot(200, lambda: self.load_model_path(last, quiet=True))
         self.refresh_status()
+
+    def is_armed(self) -> bool:
+        return bool(self.teleop and self.teleop.armed)
 
     # ================================================================== layout
     def _build(self):
@@ -167,17 +195,20 @@ class MainWindow(QMainWindow):
         # ---- sidebar
         side = QFrame()
         theme.set_role(side, "sidebar")
-        side.setFixedWidth(230)
+        side.setFixedWidth(224)
         sl = QVBoxLayout(side)
         sl.setContentsMargins(16, 20, 16, 16)
-        sl.setSpacing(4)
+        sl.setSpacing(3)
         sl.addWidget(label("BioWave", "h1"))
         sl.addWidget(label("EMG Robotic Arm", "muted"))
-        sl.addSpacing(18)
-        sl.addWidget(label("SETUP STEPS", "caption"))
         self.nav_group = QButtonGroup(self)
         self.nav_buttons, self.nav_dots = {}, {}
-        for key, nav_text, _t, _l in PAGES:
+        group = None
+        for key, nav_text, _t, _l, grp in PAGES:
+            if grp != group:
+                group = grp
+                sl.addSpacing(14)
+                sl.addWidget(label(grp, "caption"))
             row = QHBoxLayout()
             row.setSpacing(0)
             b = QPushButton(nav_text)
@@ -214,20 +245,26 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.pages = {}
         simulate_default = not xarm_plugged_in()
-        self.pages["model"] = ModelPage(self.settings)
+        names = {int(k): v.get("name", f"servo {k}") for k, v in self.config["arm"]["servos"].items()}
+        self.pages["dashboard"] = DashboardPage()
+        self.pages["model"] = ModelPage(self.settings, self.mapping, names)
         self.pages["armband"] = ArmbandPage(self.bridge, self.settings)
         self.pages["arm"] = ArmPage(simulate_default)
         self.pages["control"] = ControlPage(self.config, self.gesture_filter.min_conf)
-        self.pages["data"] = DataPage(self.settings.get("theme"))
+        self.pages["monitor"] = MonitorPage()
+        self.pages["mapping"] = MappingPage(self.mapping, self.config)
+        self.pages["keyboard"] = KeyboardPage(self.keymap)
+        self.pages["diagnostics"] = DiagnosticsPage(self.diag)
+        self.pages["data"] = DataPage(self.settings.get("theme"), self.base_config, self.settings)
         for key, *_ in PAGES:
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.NoFrame)
             host = QWidget()
             hbox = QHBoxLayout(host)
-            hbox.setContentsMargins(36, 12, 36, 28)
+            hbox.setContentsMargins(32, 12, 32, 28)
             hbox.addStretch(1)
-            self.pages[key].setMaximumWidth(960)
+            self.pages[key].setMaximumWidth(1000)
             hbox.addWidget(self.pages[key], 100)
             hbox.addStretch(1)
             scroll.setWidget(host)
@@ -244,34 +281,44 @@ class MainWindow(QMainWindow):
         self.chip_band = Chip("Armband: offline")
         self.chip_arm = Chip("Arm: offline")
         self.chip_mode = Chip("DISARMED")
-        for c in (self.chip_band, self.chip_arm, self.chip_mode):
+        self.chip_gesture = Chip("Gesture: -")
+        for c in (self.chip_band, self.chip_arm, self.chip_mode, self.chip_gesture):
             bl.addWidget(c)
         self.chip_note = label("", "muted")
         bl.addWidget(self.chip_note, 1)
-        self.next_btn = button("Next step →", "primary", slot=self.go_next)
-        bl.addWidget(self.next_btn)
         estop = button("STOP   (Space / Esc)", "estop", slot=lambda: self.emergency_stop("Stop button pressed"))
         estop.setMinimumHeight(46)
         bl.addWidget(estop)
         outer.addWidget(bar)
 
         # ---- wiring
-        mp, ap, rp, cp, dp = (self.pages[k] for k in ("model", "armband", "arm", "control", "data"))
-        mp.model_requested.connect(self.load_model_path)
-        ap.link_changed.connect(lambda _s: self.refresh_status())
-        rp.connect_toggled.connect(self.toggle_arm)
-        rp.home_requested.connect(self.go_home)
-        rp.gripper_requested.connect(self.manual_gripper)
+        p = self.pages
+        p["model"].model_requested.connect(self.load_model_path)
+        p["armband"].link_changed.connect(lambda _s: self.refresh_status())
+        p["arm"].connect_toggled.connect(self.toggle_arm)
+        p["arm"].home_requested.connect(self.go_home)
+        p["arm"].gripper_requested.connect(self.manual_gripper)
+        cp = p["control"]
         cp.arm_toggled.connect(self.toggle_armed)
         cp.pad_pressed.connect(lambda m: self.pad_held.setdefault(m, time.monotonic()))
         cp.pad_released.connect(lambda m: self.pad_held.pop(m, None))
         cp.grip_pressed.connect(lambda: setattr(self, "key_grip_pending", True))
         cp.vertical.currentIndexChanged.connect(self.on_vertical_changed)
         cp.speed.valueChanged.connect(lambda v: self.arm and self.arm.set_speed(v))
-        cp.conf.valueChanged.connect(lambda v: setattr(self.gesture_filter, "min_conf", v / 100))
+        cp.conf.valueChanged.connect(self.on_confidence_changed)
+        cp.mode.currentIndexChanged.connect(self.on_mode_changed)
+        saved_mode = self.settings.get("control_mode")
+        cp.mode.setCurrentIndex(max(0, cp.mode.findData(saved_mode)))
+        dp = p["data"]
         dp.record_toggled.connect(self.toggle_recording)
         dp.theme_changed.connect(self.set_theme)
+        dp.tuning_changed.connect(self.apply_tuning)
+        dp.export_requested.connect(self.export_configuration)
+        dp.import_requested.connect(self.import_configuration)
+        p["mapping"].mapping_saved.connect(self.on_mapping_saved)
+        p["dashboard"].navigate.connect(self.go_to)
         self.on_vertical_changed()
+        p["mapping"].set_vertical(cp.vertical.currentData() or "shoulder")
 
     # ================================================================ navigation
     def go_to(self, key: str):
@@ -279,21 +326,17 @@ class MainWindow(QMainWindow):
         idx = keys.index(key)
         self.stack.setCurrentIndex(idx)
         self.nav_buttons[key].setChecked(True)
-        _k, _n, title, lead = PAGES[idx]
+        _k, _n, title, lead, _g = PAGES[idx]
         self.title.setText(title)
         self.lead.setText(lead)
         self.current_key = key
-        self.next_btn.setVisible(idx < len(keys) - 1)
         self.refresh_status()
-
-    def go_next(self):
-        keys = [p[0] for p in PAGES]
-        self.go_to(keys[min(len(keys) - 1, keys.index(self.current_key) + 1)])
 
     def set_theme(self, mode: str):
         self.settings.set("theme", mode)
         theme.apply_theme(QApplication.instance(), mode)
-        self.pages["armband"].restyle()
+        for key in ("armband", "monitor", "mapping"):
+            self.pages[key].restyle()
         theme.apply_title_bar(self)
         self.refresh_status()
 
@@ -313,7 +356,7 @@ class MainWindow(QMainWindow):
                               "good" if self.arm.homed else "warn")
         else:
             self.chip_arm.set("Arm: offline", "none")
-        armed = bool(self.teleop and self.teleop.armed)
+        armed = self.is_armed()
         if self.parking:
             self.chip_mode.set("PARKING", "warn")
         else:
@@ -322,26 +365,30 @@ class MainWindow(QMainWindow):
         tones = {"model": "good" if self.model_loaded else "none",
                  "armband": {LinkState.STREAMING: "good", LinkState.FAILED: "bad", LinkState.IDLE: "none"}.get(s, "warn"),
                  "arm": ("good" if self.arm and self.arm.homed else "warn") if self.arm else "none",
-                 "control": "accent" if armed else "none", "data": "accent" if self.recorder else "none"}
+                 "control": "accent" if armed else "none", "data": "accent" if self.recorder else "none",
+                 "diagnostics": "bad" if self.diag.counts["error"] else "none"}
         for key, tone in tones.items():
             self.nav_dots[key].set_tone(tone)
 
         cp = self.pages["control"]
         missing = []
         if not self.model_loaded:
-            missing.append("load a model (step 1)")
+            missing.append("load a model (Gesture model)")
         if s != LinkState.STREAMING:
-            missing.append("connect the armband (step 2) - or use the keyboard only")
+            missing.append("connect the armband - or use the keyboard only")
         if not self.arm:
-            missing.append("connect the arm (step 3)")
+            missing.append("connect the arm (Robotic arm)")
         elif not self.arm.homed:
-            missing.append("send the arm home (step 3)")
+            missing.append("send the arm home (Robotic arm)")
         if not self.arm and s == LinkState.STREAMING and self.model_loaded:
             cp.checklist.setText("Armband connected, no arm: PREVIEW mode. The Live panel shows what each gesture would do "
-                                 "(nothing moves). Connect the arm (step 3) or tick “Simulate” to move it.")
+                                 "(nothing moves). Connect the arm (Robotic arm) or tick “Simulate” to move it.")
         else:
             cp.checklist.setText("Before arming: " + "; ".join(missing) + "." if missing else "Everything is ready.")
+        self.pages["mapping"].set_armed(armed)
+        self.pages["keyboard"].set_armed(armed)
         self.update_controls()
+        self.refresh_dashboard()
 
     # ================================================================== model
     def load_model_path(self, path: str, quiet: bool = False):
@@ -349,25 +396,14 @@ class MainWindow(QMainWindow):
         try:
             loaded = load_model(path)
         except ModelError as exc:
+            self.diag.add("error", "gesture", str(exc))
             if not quiet:
                 mp.show_error(str(exc))
             return
         classes = loaded.class_names
-        mapping = {c: canonical_gesture(c) for c in classes}
-        problems = []
-        unknown = [c for c, g in mapping.items() if g is None]
-        missing = [g for g in ("left", "right", "up", "down", "grip", "rest") if g not in mapping.values()]
-        if "rest" in missing:
-            problems.append("⚠ This model has no Rest class, so it can never say “do nothing”. Use a model trained with Rest.")
-        elif missing:
-            problems.append("Not in this model: " + ", ".join(missing))
-        if unknown:
-            problems.append("Ignored classes: " + ", ".join(unknown))
         if self.bridge.active:
             self.bridge.disconnect()                       # buffer sizes change with the model
         self.disarm("Model changed")
-        self.gesture_filter.switch_hold_s = 0.0 if "switch" in mapping.values() \
-            else float(self.config["filter"].get("switch_hold_s", 0.0))
         self.window_samples, self.stride_samples = loaded.window_samples, loaded.stride_samples
         self.num_channels = loaded.input_channels
         self.data_buffer = np.zeros((self.num_channels, self.window_samples), dtype=np.float32)
@@ -377,17 +413,57 @@ class MainWindow(QMainWindow):
         self.gesture_filter.reset()
         self.loaded, self.model_loaded = loaded, True
         self.settings.set("last_model", path)
-        mp.show_loaded(loaded, mapping, problems)
+        problems = self._show_model(loaded)
+        self.diag.add("info", "gesture", f"Model loaded: {Path(path).parent.name} ({len(classes)} classes: {', '.join(classes)})")
+        for pmsg in problems:
+            self.diag.add("warning", "gesture", pmsg.lstrip("⚠ "))
         self.refresh_status()
+
+    def _show_model(self, loaded):
+        """(Re)build the class -> gesture table. Called on load and whenever the mapping changes."""
+        classes = loaded.class_names
+        mapping = {c: self.mapping.resolve(c) for c in classes}
+        recognised = set(mapping.values()) - {None}
+        problems = []
+        unknown = [c for c, g in mapping.items() if g is None]
+        missing = [BY_ID[g].name for g in BY_ID if g not in recognised]
+        if "rest" not in recognised:
+            problems.append("⚠ This model has no Rest class, so it can never say “do nothing”. Use a model trained with Rest.")
+        if missing:
+            problems.append("Gestures this model cannot produce (their mappings stay inactive): " + ", ".join(missing))
+        if unknown:
+            problems.append("Ignored classes (not one of the ten gestures; set a “Model class” in Gesture mapping): " + ", ".join(unknown))
+        self.model_gestures = recognised
+        if self.teleop:
+            self.teleop.commands.available = recognised
+        self.pages["model"].show_loaded(loaded, mapping, problems)
+        self.pages["mapping"].set_model_classes(classes)
+        return problems
 
     # ================================================================ armband data
     def on_link_state(self, state_value: str, message: str):
+        previous = self.link_state
         self.link_state = LinkState(state_value)
+        self.last_link_message = message
+        if self.link_state != previous:
+            level = "error" if self.link_state == LinkState.FAILED else \
+                "warning" if self.link_state in (LinkState.STALLED, LinkState.RECONNECTING) else "info"
+            self.diag.add(level, "link", f"{previous.value} → {self.link_state.value}" + (f": {message}" if message else ""))
+        if self.link_state != LinkState.STREAMING:
+            # Predictions made before a link problem must never keep driving the arm.
+            self.gesture_filter.reset()
+            self.last_prediction = ("", 0.0, None)
         if self.link_state in (LinkState.IDLE, LinkState.FAILED):
+            self.pages["diagnostics"].clear_stats()
             if self.recorder:
                 self.toggle_recording("")
-            self.gesture_filter.reset()
+        if self.is_armed() and self.link_state != LinkState.STREAMING and self.teleop.mode != "keyboard":
+            self.pages["control"].note_label.setText("Armband link lost - gestures are ignored until it recovers")
         self.refresh_status()
+
+    def on_link_stats(self, stats):
+        self.last_stats = stats
+        self.pages["diagnostics"].set_stats(stats)
 
     def on_batch(self, batch):
         if self.data_buffer is None:
@@ -395,6 +471,8 @@ class MainWindow(QMainWindow):
         batch = np.asarray(batch, dtype=np.float32)
         if batch.ndim != 2 or not len(batch):
             return
+        if self.pages["monitor"].isVisible():
+            self.pages["monitor"].scope.push(batch)
         if batch.shape[1] < self.num_channels:
             batch = np.pad(batch, ((0, 0), (0, self.num_channels - batch.shape[1])))
         batch = batch[:, :self.num_channels]
@@ -414,9 +492,29 @@ class MainWindow(QMainWindow):
     def on_prediction(self, label_text, confidence):
         now = time.monotonic()
         gesture = self.gesture_filter.add_prediction(label_text, confidence, now)
+        latency = getattr(self.inference, "last_latency_s", -1.0)
+        self.last_prediction = (label_text, confidence, gesture)
         self.pages["control"].raw_label.setText(
-            f"Model output: {label_text}  ({confidence * 100:.0f}%)  →  {gesture or 'ignored'}")
+            f"Model output: {label_text}  ({confidence * 100:.0f}%)  →  {BY_ID[gesture].name if gesture else 'ignored'}")
+        self.pages["monitor"].on_prediction(label_text, confidence, gesture, latency)
+        self.pages["diagnostics"].set_latency(latency)
+        stable = self.gesture_filter.stable
+        m = self.mapping.get(stable)
+        self.pages["monitor"].on_stable(BY_ID[stable].name if stable else None,
+                                        "→ " + CommandGenerator.describe(m, self.arm_names(), self.vertical_name()) if m else "",
+                                        confidence)
+        self.pages["mapping"].set_live(stable, confidence)
         self.log("prediction", label=label_text, confidence=f"{confidence:.3f}", gesture=gesture or "")
+
+    def _inference_error(self, message: str):
+        self.diag.add("error", "gesture", message)
+        self.pages["control"].note_label.setText(message)
+
+    def arm_names(self):
+        return {int(k): v.get("name", f"servo {k}") for k, v in self.config["arm"]["servos"].items()}
+
+    def vertical_name(self):
+        return self.pages["control"].vertical.currentData() or ""
 
     # ================================================================ recording
     def toggle_recording(self, tag: str):
@@ -447,6 +545,7 @@ class MainWindow(QMainWindow):
             self.disconnect_arm()
             return
         rp = self.pages["arm"]
+        self.config = effective_config(self.base_config, self.settings)   # pick up calibration changes
         try:
             if rp.simulate.isChecked():
                 start = dict(self.config["arm"]["home"])
@@ -465,14 +564,18 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             rp.banner.set(f"Could not open the xArm over USB: {exc}\nCheck the USB cable, that the arm's power switch "
                           "is ON, and that no other program is using the arm.", "bad")
+            self.diag.add("error", "arm", f"Could not open the xArm over USB: {exc}")
             return
         positions = arm.read_positions()
         ok, voltage = arm.battery()
         arm.set_speed(self.pages["control"].speed.value())
         self.arm, self.streamer = arm, streamer
+        self.apply_tuning(self.pages["data"].current_tuning(), save=False)
         streamer.start()
-        self.teleop = Teleop(arm, self.gesture_filter, self.config, streamer)
+        self.teleop = Teleop(arm, self.gesture_filter, self.config, streamer, self.mapping)
         self.teleop.vertical = self.pages["control"].vertical.currentData()
+        self.teleop.commands.available = self.model_gestures
+        self.on_mode_changed()
         self.open_log()
         unknown = [str(s) for s, p in positions.items() if p is None]
         volt = f"{voltage:.2f} V" if voltage else "voltage n/a"
@@ -484,12 +587,14 @@ class MainWindow(QMainWindow):
         rp.card_connect.set_done(True)
         self.refresh_servo_view()
         self.log("arm_connected", note=f"{backend.name}; positions={json.dumps(positions)}; voltage={voltage}")
+        self.diag.add("info", "arm", f"Connected: {backend.name}, {volt}")
         if not ok:
             QMessageBox.warning(self, "Low voltage", f"Arm supply reads {voltage:.2f} V (minimum {arm.min_battery} V).\n"
                                 "Use the 7.5 V adapter / charge the battery before moving the arm.")
         self.refresh_status()
 
     def disconnect_arm(self):
+        self.diag.add("info", "arm", "Arm disconnected")
         self.disarm("Arm disconnected")
         if self.streamer:
             self.streamer.stop()
@@ -507,12 +612,12 @@ class MainWindow(QMainWindow):
         self.close_log()
         self.refresh_status()
 
-    def go_home(self):
+    def go_home(self, confirm=True):
         if not self.arm:
-            self.pages["arm"].banner.set("Connect the arm first (step 1).", "warn")
+            self.pages["arm"].banner.set("Connect the arm first.", "warn")
             return
-        if QMessageBox.question(self, "Go home", "The arm will move slowly to its home pose.\nMake sure nothing and nobody "
-                                "is within reach of the arm.\n\nContinue?") != QMessageBox.Yes:
+        if confirm and QMessageBox.question(self, "Go home", "The arm will move slowly to its home pose.\nMake sure nothing and nobody "
+                                            "is within reach of the arm.\n\nContinue?") != QMessageBox.Yes:
             return
         self.disarm("Homing")
         try:
@@ -529,7 +634,7 @@ class MainWindow(QMainWindow):
 
     def after_home(self):
         if self.arm and self.arm.homed:
-            self.pages["arm"].banner.set("At home. Continue to step 4 to arm the robot.", "good")
+            self.pages["arm"].banner.set("At home. Continue to Arm control to arm the robot.", "good")
             self.pages["arm"].card_home.set_done(True)
         self.refresh_status()
 
@@ -562,30 +667,31 @@ class MainWindow(QMainWindow):
             self.disarm("Disarmed by user")
             return
         if not self.can_arm():
-            QMessageBox.information(self, "Not ready", "Connect the arm and press “Go home” first (step 3).")
+            QMessageBox.information(self, "Not ready", "Connect the arm and press “Go home” first (Robotic arm page).")
             self.go_to("arm")
             return
-        if cp.emg_check.isChecked() and not (self.link_state == LinkState.STREAMING and self.model_loaded):
+        if cp.mode.currentData() != "keyboard" and not (self.link_state == LinkState.STREAMING and self.model_loaded):
             if QMessageBox.question(self, "Gestures not available",
                                     "The armband is not streaming or no model is loaded, so EMG gestures cannot be used.\n\n"
                                     "ARM in keyboard-only mode?") != QMessageBox.Yes:
                 return
-            cp.emg_check.setChecked(False)
+            cp.mode.setCurrentIndex(cp.mode.findData("keyboard"))
         self.gesture_filter.reset()
-        self.pressed_keys.clear()
+        self.keyboard.release_all()
         self.streamer.clear_error()
         self.teleop.armed = True
         self.log("armed")
+        self.diag.add("info", "arm", f"ARMED ({cp.mode.currentText()})")
         self.refresh_status()
 
     def not_ready_reason(self):
         if not self.arm:
-            return "Keys only move the arm when ARMED: first connect the arm (step 3)."
+            return "Keys only move the arm when ARMED: first connect the arm (Robotic arm page)."
         if not self.arm.homed:
-            return "Keys only move the arm when ARMED: send the arm home first (step 3), then ARM."
+            return "Keys only move the arm when ARMED: send the arm home first (Robotic arm page), then ARM."
         if time.monotonic() < self.home_busy_until:
             return "Wait for homing to finish, then ARM."
-        return "Press ARM (step 4) to enable motion, then use the keys."
+        return "Press ARM to enable motion, then use the keys."
 
     def disarm(self, reason=""):
         if self.streamer:
@@ -596,7 +702,8 @@ class MainWindow(QMainWindow):
         if self.teleop and self.teleop.armed:
             self.teleop.armed = False
             self.log("disarmed", note=reason)
-        self.pressed_keys.clear()
+            self.diag.add("info", "arm", f"Disarmed: {reason or 'user'}")
+        self.keyboard.release_all() if hasattr(self, "keyboard") else None
         self.pad_held.clear()
         self.key_grip_pending = False
         cp = self.pages["control"]
@@ -619,10 +726,12 @@ class MainWindow(QMainWindow):
                 console(f"Freeze failed: {exc}")
             self.home_busy_until = 0.0
             self.refresh_servo_view()
+        self.diag.add("warning", "arm", f"STOP: {reason}")
         self.disarm(f"STOPPED: {reason}")
         self.pages["control"].action_label.setText("STOPPED")
 
     def handle_arm_failure(self, exc):
+        self.diag.add("error", "arm", f"{type(exc).__name__}: {exc}")
         if isinstance(exc, ArmSafetyError):
             self.disarm(str(exc))
             QMessageBox.warning(self, "Safety", str(exc))
@@ -636,6 +745,8 @@ class MainWindow(QMainWindow):
         if self.teleop:
             self.teleop.vertical = cp.vertical.currentData()
         cp.joint_label.setText("Up / Down moves the " + cp.vertical.currentText().upper())
+        if "mapping" in self.pages:
+            self.pages["mapping"].set_vertical(cp.vertical.currentData() or "shoulder")
 
     def update_controls(self):
         armed = bool(self.teleop and self.teleop.armed)
@@ -662,46 +773,23 @@ class MainWindow(QMainWindow):
         cp.set_pad_enabled(armed)
 
     # ============================================================== keyboard
-    def handle_key(self, event, pressed):
-        key = event.key()
+    def _keys_held_changed(self, names):
         cp = self.pages["control"]
-        if key in STOP_KEYS:
-            if pressed:
-                self.emergency_stop("Space/Esc pressed")
-            return True
-        armed = bool(self.teleop and self.teleop.armed)
-        if not armed:
-            if key in KEY_MOTIONS or key == Qt.Key_G:
-                if pressed and not event.isAutoRepeat():
-                    cp.key_label.setText(f"Keyboard: {KEY_NAMES.get(key, 'G')} ignored (disarmed)")
-                    cp.note_label.setText(self.not_ready_reason())
-                return True
-            return False
-        if event.isAutoRepeat():
-            return key in KEY_MOTIONS
-        if key in KEY_MOTIONS:
-            if pressed:
-                self.pressed_keys[key] = time.monotonic()
-            else:
-                self.pressed_keys.pop(key, None)
-            cp.highlight_key(KEY_MOTIONS[key], pressed)
-            held = [KEY_NAMES[k] for k in self.pressed_keys]
-            cp.key_label.setText(f"Keyboard: {' '.join(held)} held" if held else "Keyboard: idle")
-            return True
-        if pressed and key == Qt.Key_G:
-            self.key_grip_pending = True
-            return True
-        if pressed and key in (Qt.Key_1, Qt.Key_2):
-            index = 0 if key == Qt.Key_1 else 1
-            if index < cp.vertical.count():
-                cp.vertical.setCurrentIndex(index)
-            return True
-        return False
+        cp.key_label.setText(f"Keyboard: {' '.join(names)} held" if names else "Keyboard: idle")
+        held = self.keyboard.held_motions(time.monotonic())
+        for motion in cp.pad_buttons:
+            cp.highlight_key(motion, motion in held)
+
+    def _key_ignored(self, text):
+        if self.current_key == "control":
+            cp = self.pages["control"]
+            cp.key_label.setText(f"Keyboard: {text}")
+            cp.note_label.setText(self.not_ready_reason())
 
     # ============================================================ control loop
     def control_tick(self):
         now = time.monotonic()
-        if not (self.teleop and self.teleop.armed):
+        if not self.is_armed():
             self.preview_tick(now)
             return
         cp = self.pages["control"]
@@ -709,11 +797,15 @@ class MainWindow(QMainWindow):
             exc, self.streamer.error = self.streamer.error, None
             self.handle_arm_failure(exc)
             return
-        key_motions = {KEY_MOTIONS[k]: now - since for k, since in self.pressed_keys.items()}
+        select = self.keyboard.take_select()
+        if select and cp.vertical.findData(select) >= 0:
+            cp.vertical.setCurrentIndex(cp.vertical.findData(select))
+        key_motions = self.keyboard.held_motions(now)
         key_motions.update({m: now - since for m, since in self.pad_held.items()})
-        key_grip, self.key_grip_pending = self.key_grip_pending, False
-        emg_enabled = cp.emg_check.isChecked()
-        emg_ok = (emg_enabled and self.link_state == LinkState.STREAMING
+        key_grip = self.keyboard.take_grip() or self.key_grip_pending
+        self.key_grip_pending = False
+        mode = cp.mode.currentData()
+        emg_ok = (mode != "keyboard" and self.link_state == LinkState.STREAMING and self.model_loaded
                   and now - self.last_batch_t <= float(self.config["filter"]["emg_timeout_s"]))
         try:
             status = self.teleop.tick(now, key_motions, key_grip, emg_ok)
@@ -721,20 +813,31 @@ class MainWindow(QMainWindow):
             self.handle_arm_failure(exc)
             return
         note = status["note"]
-        if not emg_enabled and (not note or note.startswith("EMG stream lost")):
+        if mode == "keyboard" and (not note or note.startswith("EMG stream lost")):
             note = "Keyboard only"
+        stale = mode != "keyboard" and note.startswith("EMG stream lost")
+        if stale and not self._stale_logged:                      # log the transition, not every tick
+            self.diag.add("warning", "gesture", "EMG data stale - the arm holds its position")
+        self._stale_logged = stale
         cp.note_label.setText(note)
-        cp.grip_hint.setText(self.gesture_filter.grip_hint(now) if emg_ok else "")
+        cp.grip_hint.setText(status["hint"] if emg_ok else "")
         cp.action_label.setText(f"{status['motion'].upper()}  ({status['source']})" if status["motion"] else "HOLD")
+        self.last_status = status
         if status["switched"]:
             cp.vertical.setCurrentIndex(cp.vertical.findData(status["switched"]))
             self.log("switch_joint", note=status["switched"], source=status["source"])
         if status["gripper"]:
             self.log("gripper", note=status["gripper"], source=status["source"])
+        if status["goto"]:
+            self.log("goto", note=f"servo {status['goto'][0]} -> {status['goto'][1]}", source=status["source"])
+        if status["home"]:
+            self.diag.add("info", "gesture", "Gesture requested: go home")
+            self.go_home(confirm=False)
+            return
         if status["motion"] or status["gripper"]:
             self.last_motion_t = now
             self.log("move", motion=status["motion"] or "", source=status["source"] or "", note=note)
-        if status["motion"] or status["gripper"] or self.streamer.is_moving():
+        if status["motion"] or status["gripper"] or status["goto"] or self.streamer.is_moving():
             self.refresh_servo_view()
 
     def preview_tick(self, now):
@@ -743,12 +846,11 @@ class MainWindow(QMainWindow):
         streaming = self.link_state == LinkState.STREAMING and self.model_loaded
         if not streaming:
             return
-        try:
-            motion = self.gesture_filter.motion(now) if self.gesture_filter.is_fresh(now) else None
-        except Exception:
-            motion = None
+        gid = self.gesture_filter.stable if self.gesture_filter.is_fresh(now) else None
+        m = self.mapping.get(gid)
         tag = "PREVIEW" if self.arm else "PREVIEW (no arm connected)"
-        cp.action_label.setText(f"{tag}: {motion.upper()}" if motion else f"{tag}: rest")
+        what = CommandGenerator.describe(m, self.arm_names(), self.vertical_name()) if m else ""
+        cp.action_label.setText(f"{tag}: {BY_ID[gid].name}  →  {what}" if gid else f"{tag}: rest")
 
     def refresh_servo_view(self):
         if not self.arm:
@@ -761,6 +863,130 @@ class MainWindow(QMainWindow):
                 bar.setValue(max(bar.minimum(), min(bar.maximum(), pos)))
         if self.arm.gripper_closed is not None:
             cp.gripper_label.setText(f"Gripper: {'CLOSED' if self.arm.gripper_closed else 'OPEN'}")
+
+    # ================================================================ settings hooks
+    def apply_tuning(self, values, save=False):
+        """Push the smoothing parameters to the running motion thread and the gesture guard."""
+        if self.streamer:
+            try:
+                self.streamer.apply_tuning(lookahead=values["lookahead"] / 1000.0, accel=values["accel"],
+                                           decel=values["decel"], jerk=values["jerk"],
+                                           min_speed=values["min_speed"], min_lead=values["min_lead"])
+            except ArmSafetyError as exc:
+                self.diag.add("error", "arm", f"Smoothing not applied: {exc}")
+                QMessageBox.warning(self, "Smoothing not applied", str(exc))
+                return
+        if self.teleop:
+            self.teleop.reversal_guard_s = float(values["reversal_guard"])
+        self.diag.add("info", "arm", "Motion smoothing: " + ", ".join(f"{k}={v:g}" for k, v in values.items()))
+
+    def on_mode_changed(self, *_):
+        mode = self.pages["control"].mode.currentData()
+        self.settings.set("control_mode", mode)
+        if self.teleop:
+            self.teleop.mode = mode
+        self.refresh_dashboard()
+
+    def on_confidence_changed(self, value):
+        self.gesture_filter.min_conf = value / 100.0
+        self.settings.set("min_confidence", value / 100.0)
+        self.pages["monitor"].set_threshold(f"Global confidence threshold: {value:.0f} %  (change it on Arm control; "
+                                            "individual gestures can override it in Gesture mapping)")
+
+    def on_mapping_saved(self):
+        self.gesture_filter.reset()
+        if self.teleop:
+            self.teleop.commands.reset()
+        if self.loaded:
+            self._show_model(self.loaded)
+        self.diag.add("info", "gesture", "Gesture mapping saved and activated")
+        self.refresh_dashboard()
+
+    def export_configuration(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Export configuration", str(Path.home() / "emg_arm_config.json"), "JSON (*.json)")
+        if not path:
+            return
+        try:
+            export_bundle(Path(path), self.mapping, self.keymap, self.settings)
+        except OSError as exc:
+            self.pages["data"].config_note.setText(f"Export failed: {exc}")
+            return
+        self.pages["data"].config_note.setText(f"Exported to {path}")
+        self.diag.add("info", "app", f"Configuration exported to {path}")
+
+    def import_configuration(self):
+        if self.is_armed():
+            QMessageBox.information(self, "Disarm first", "Disarm the arm before importing a configuration.")
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Import configuration", str(Path.home()), "JSON (*.json)")
+        if not path:
+            return
+        try:
+            import_bundle(Path(path), self.mapping, self.keymap, self.settings)
+        except (ValueError, MappingError) as exc:
+            self.pages["data"].config_note.setText(f"Import failed, nothing was changed: {exc}")
+            self.diag.add("error", "app", f"Configuration import failed: {exc}")
+            return
+        self.pages["keyboard"].refresh()
+        self.pages["control"].set_key_labels(self.keymap, PAD_ACTIONS)
+        self.pages["data"].load_tuning()
+        self.pages["data"].load_calibration()
+        self.pages["mapping"].work = __import__("copy").deepcopy(self.mapping.mappings)
+        self.pages["mapping"]._rebuild_list()
+        self.pages["mapping"]._load_editor()
+        cp = self.pages["control"]
+        cp.mode.setCurrentIndex(max(0, cp.mode.findData(self.settings.get("control_mode"))))
+        self.on_mapping_saved()
+        self.pages["data"].config_note.setText(f"Imported {path}. Calibration applies when the arm is reconnected.")
+        self.diag.add("info", "app", f"Configuration imported from {path}")
+
+    # ================================================================ dashboard
+    def refresh_dashboard(self):
+        self.pages["diagnostics"].poll()
+        t = self.pages["dashboard"].tiles
+        s, stats = self.link_state, self.last_stats
+        tone = {LinkState.STREAMING: "good", LinkState.FAILED: "bad", LinkState.IDLE: "none"}.get(s, "warn")
+        where = f"{stats.transport} {stats.device_ip}".strip() if stats and s != LinkState.IDLE else ""
+        t["armband"].set(s.value.capitalize(), where or self.last_link_message[:70], tone)
+        if stats and s == LinkState.STREAMING:
+            age = stats.last_rx_age_s
+            t["data"].set(f"{stats.frames_per_s:.0f} frames/s",
+                          f"loss {stats.loss_percent:.1f} % · last data {age * 1000:.0f} ms ago" if age != float("inf") else "",
+                          "good" if stats.frames_per_s >= 450 and age < 0.5 else "warn")
+        else:
+            t["data"].set("No data", "Connect the armband", "none")
+        t["model"].set(Path(self.loaded.path).parent.name if self.loaded else "Not loaded",
+                       f"{len(self.loaded.class_names)} classes" if self.loaded else "Pick one on Gesture model",
+                       "good" if self.loaded else "warn")
+        label_text, conf, gesture = self.last_prediction
+        stable = self.gesture_filter.stable if self.gesture_filter.is_fresh(time.monotonic()) else None
+        if stable:
+            t["gesture"].set(BY_ID[stable].name, f"model: {label_text} {conf * 100:.0f} %", "accent")
+        elif label_text and s == LinkState.STREAMING:
+            t["gesture"].set("None stable", f"model: {label_text} {conf * 100:.0f} %", "none")
+        else:
+            t["gesture"].set("—", "Waiting for the armband", "none")
+        self.chip_gesture.set(f"Gesture: {BY_ID[stable].name}" if stable else "Gesture: -", "accent" if stable else "none")
+        if self.arm:
+            sim = isinstance(self.arm.backend, SimulatedBackend)
+            t["arm"].set("Simulated" if sim else "Connected", "homed" if self.arm.homed else "not homed - press Go home",
+                         "good" if self.arm.homed else "warn")
+        else:
+            t["arm"].set("Offline", "Connect on Robotic arm", "none")
+        armed = self.is_armed()
+        mode_text = self.pages["control"].mode.currentText()
+        t["mode"].set("ARMED" if armed else "DISARMED", mode_text, "bad" if armed else "none")
+        st = self.last_status
+        move = st.get("motion")
+        t["movement"].set(move.upper() if move else "HOLD" if armed else "—",
+                          f"Up/Down joint: {self.vertical_name()}" if armed else "Not armed", "accent" if move else "none")
+        self.pages["monitor"].set_movement(f"Arm: {move.upper()}" if move else "Arm: no movement", bool(move))
+        c = self.diag.counts
+        t["health"].set(f"{c['error']} error{'s' if c['error'] != 1 else ''} · {c['warning']} warning{'s' if c['warning'] != 1 else ''}",
+                        "See Logs & diagnostics",
+                        "bad" if c["error"] else "warn" if c["warning"] else "good")
+        self.pages["dashboard"].set_events([f"{e.clock}  {e.level.upper():7s} {e.source}: {e.message}"
+                                            for e in self.diag.recent(8, "warning")])
 
     # ================================================================= logging
     def open_log(self):
@@ -867,6 +1093,8 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self.close)     # not directly: Qt ignores close() while inside closeEvent
 
     def shutdown(self):
+        self.keyboard.detach()
+        self.ui_timer.stop()
         self.control_timer.stop()
         self.battery_timer.stop()
         self.record_timer.stop()

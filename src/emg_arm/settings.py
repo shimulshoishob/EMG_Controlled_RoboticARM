@@ -22,6 +22,11 @@ DEFAULTS = {
     "last_model": "",
     "wifi_ssid": "",
     "setup_done": False,
+    "control_mode": "hybrid",      # hybrid | gestures | keyboard
+    "min_confidence": 0.0,         # 0 = use config/arm_config.json
+    "tuning": {},                  # motion-smoothing overrides (see ui/pages/data_page.py)
+    "servo_ranges": {},            # {servo id: [min, max]}, only ever narrower than the shipped limits
+    "home_overrides": {},          # {servo id: position}
 }
 
 

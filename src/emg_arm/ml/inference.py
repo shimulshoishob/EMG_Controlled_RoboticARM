@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,6 +81,8 @@ class InferenceWorker(QThread):
         self._lock = threading.Lock()
         self._event = threading.Event()
         self._reported = False
+        self._submitted_at = 0.0
+        self.last_latency_s = -1.0        # newest window handed in -> prediction ready (measured)
 
     def load_model(self, model, class_names):
         with self._lock:
@@ -88,6 +91,7 @@ class InferenceWorker(QThread):
     def submit_window(self, window):
         with self._lock:
             self._window = window
+            self._submitted_at = time.monotonic()
         self._event.set()
 
     def run(self):
@@ -100,6 +104,7 @@ class InferenceWorker(QThread):
             self._event.clear()
             with self._lock:
                 win, model, classes, self._window = self._window, self.model, self.class_names, None
+                t_submit = self._submitted_at
             if win is None or model is None:
                 continue
             try:
@@ -112,6 +117,7 @@ class InferenceWorker(QThread):
                 else:
                     best, conf = model.predict(feats)[0], 1.0
                 label = classes[best] if isinstance(best, (int, np.integer)) and 0 <= best < len(classes) else str(best)
+                self.last_latency_s = time.monotonic() - t_submit
                 self.prediction_ready.emit(label, conf)
             except Exception as exc:                      # report once, keep running
                 if not self._reported:
