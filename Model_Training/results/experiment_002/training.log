@@ -1,0 +1,5 @@
+02:51:07 | INFO    | experiment folder: D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\results\experiment_002
+02:51:07 | WARNING | skipped emg_20261108_185041_s011.csv: no label (no label column and no gesture in the file name)
+02:51:07 | ERROR   | No usable labelled recordings found (1 files seen, 1 skipped).
+02:51:07 | ERROR   |   emg_20261108_185041_s011.csv: no label (no label column and no gesture in the file name)
+02:51:07 | ERROR   | Gesture labels come from a label column or from the file name, e.g. emg_20261108_185041_S02_sess1_closed_fist_trial3.csv (the 'label' box of the app's raw recorder). Use --data-path to point at labelled recordings, or --demo for synthetic data.

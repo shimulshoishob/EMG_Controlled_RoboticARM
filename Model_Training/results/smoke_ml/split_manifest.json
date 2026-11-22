@@ -1,0 +1,65 @@
+{
+  "mode": "subject",
+  "independent_of": "subject",
+  "groups": {
+    "train": [
+      "S01",
+      "S02",
+      "S04"
+    ],
+    "val": [
+      "S03"
+    ],
+    "test": [
+      "S05"
+    ]
+  },
+  "n_segments": {
+    "train": 60,
+    "val": 20,
+    "test": 20
+  },
+  "window_counts": {
+    "train": 5820,
+    "val": 1940,
+    "test": 1940
+  },
+  "class_windows": {
+    "train": {
+      "closed_fist": 582,
+      "double_fist": 582,
+      "down": 582,
+      "left": 582,
+      "pinch": 582,
+      "rest": 582,
+      "right": 582,
+      "thumbs_up": 582,
+      "up": 582,
+      "victory": 582
+    },
+    "val": {
+      "closed_fist": 194,
+      "double_fist": 194,
+      "down": 194,
+      "left": 194,
+      "pinch": 194,
+      "rest": 194,
+      "right": 194,
+      "thumbs_up": 194,
+      "up": 194,
+      "victory": 194
+    },
+    "test": {
+      "closed_fist": 194,
+      "double_fist": 194,
+      "down": 194,
+      "left": 194,
+      "pinch": 194,
+      "rest": 194,
+      "right": 194,
+      "thumbs_up": 194,
+      "up": 194,
+      "victory": 194
+    }
+  }
+}

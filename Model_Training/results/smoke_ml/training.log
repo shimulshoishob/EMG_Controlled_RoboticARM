@@ -1,0 +1,108 @@
+02:36:39 | INFO    | experiment folder: D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\results\smoke_ml
+02:36:39 | INFO    | generating SYNTHETIC demo data in D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\data_demo ...
+02:36:52 | INFO    | dataset: 100 recordings, 5 subject(s), 10 class(es): ['closed_fist', 'double_fist', 'down', 'left', 'pinch', 'rest', 'right', 'thumbs_up', 'up', 'victory']
+02:36:52 | INFO    | split mode (auto): subject
+02:36:52 | WARNING | skipping cnn1d: family 'dl' not enabled
+02:36:52 | WARNING | skipping cnn2d: family 'dl' not enabled
+02:36:52 | WARNING | skipping lstm: family 'dl' not enabled
+02:36:52 | WARNING | skipping bilstm: family 'dl' not enabled
+02:36:52 | WARNING | skipping gru: family 'dl' not enabled
+02:36:52 | WARNING | skipping transformer: family 'dl' not enabled
+02:36:52 | WARNING | skipping cnn_lstm: family 'hybrid' not enabled
+02:36:52 | WARNING | skipping cnn_gru: family 'hybrid' not enabled
+02:36:52 | WARNING | skipping cnn_bilstm: family 'hybrid' not enabled
+02:36:52 | WARNING | skipping cnn_tcn: family 'hybrid' not enabled
+02:36:52 | WARNING | skipping cnn_attention: family 'hybrid' not enabled
+02:36:52 | WARNING | skipping cnn_transformer: family 'hybrid' not enabled
+02:36:52 | WARNING | skipping cnn_rf: family 'hybrid' not enabled
+02:36:57 | INFO    | split 'subject': windows {'train': 5820, 'val': 1940, 'test': 1940} (feature dim 204)
+02:36:57 | INFO    | device: cpu | models: ['rf', 'extra_trees', 'xgboost', 'lightgbm', 'catboost', 'svm_rbf', 'svm_linear', 'knn', 'logreg', 'lda', 'gradient_boosting', 'mlp']
+02:36:57 | INFO    | [1/12] Random Forest (ml, input: features)
+02:37:07 | INFO    |   trained in 5.4s (peak +20 MB)
+02:37:08 | INFO    |   test: acc 0.486  bal.acc 0.486  macro-F1 0.462
+02:37:16 | INFO    |   CPU latency: median 19.77 ms, P95 25.54 ms (marginal), size 3224 KB
+02:37:18 | INFO    | [2/12] Extra Trees (ml, input: features)
+02:37:19 | INFO    |   trained in 1.1s (peak +33 MB)
+02:37:20 | INFO    |   test: acc 0.466  bal.acc 0.466  macro-F1 0.443
+02:37:27 | INFO    |   CPU latency: median 22.26 ms, P95 26.65 ms (marginal), size 4171 KB
+02:37:30 | INFO    | [3/12] XGBoost (ml, input: features)
+02:38:09 | INFO    |   trained in 39.8s (peak +85 MB)
+02:38:11 | INFO    |   test: acc 0.473  bal.acc 0.473  macro-F1 0.467
+02:38:14 | INFO    |   CPU latency: median 13.14 ms, P95 30.56 ms (marginal), size 642 KB
+02:38:15 | INFO    | [4/12] LightGBM (ml, input: features)
+02:38:39 | INFO    |   trained in 23.9s (peak +26 MB)
+02:38:40 | INFO    |   test: acc 0.440  bal.acc 0.440  macro-F1 0.432
+02:38:42 | INFO    |   CPU latency: median 8.16 ms, P95 12.17 ms (comfortable), size 361 KB
+02:38:44 | INFO    | [5/12] CatBoost (ml, input: features)
+02:39:52 | INFO    |   trained in 68.7s (peak +25 MB)
+02:39:53 | INFO    |   test: acc 0.396  bal.acc 0.396  macro-F1 0.372
+02:39:55 | INFO    |   CPU latency: median 6.55 ms, P95 10.00 ms (comfortable), size 392 KB
+02:39:57 | INFO    | [6/12] SVM (RBF) (ml, input: features)
+02:40:03 | INFO    |   trained in 5.5s (peak +19 MB)
+02:40:13 | INFO    |   test: acc 0.261  bal.acc 0.261  macro-F1 0.239
+02:40:21 | INFO    |   CPU latency: median 11.16 ms, P95 14.74 ms (marginal), size 3861 KB
+02:40:22 | INFO    | [7/12] SVM (linear) (ml, input: features)
+02:40:25 | INFO    |   trained in 3.7s (peak +16 MB)
+02:40:28 | INFO    |   test: acc 0.251  bal.acc 0.251  macro-F1 0.217
+02:40:31 | INFO    |   CPU latency: median 8.80 ms, P95 12.63 ms (marginal), size 2156 KB
+02:40:32 | INFO    | [8/12] k-NN (ml, input: features)
+02:40:32 | INFO    |   trained in 0.0s (peak +0 MB)
+02:40:33 | INFO    |   test: acc 0.329  bal.acc 0.329  macro-F1 0.307
+02:40:39 | INFO    |   CPU latency: median 11.64 ms, P95 14.67 ms (marginal), size 3964 KB
+02:40:41 | INFO    | [9/12] Logistic Regression (ml, input: features)
+02:41:50 | INFO    |   trained in 68.8s (peak +8 MB)
+02:41:51 | INFO    |   test: acc 0.218  bal.acc 0.218  macro-F1 0.194
+02:41:53 | INFO    |   CPU latency: median 6.01 ms, P95 7.98 ms (comfortable), size 8 KB
+02:41:57 | INFO    | [10/12] LDA (ml, input: features)
+02:41:57 | INFO    |   trained in 0.6s (peak +2 MB)
+02:41:58 | INFO    |   test: acc 0.258  bal.acc 0.258  macro-F1 0.240
+02:42:00 | INFO    |   CPU latency: median 6.03 ms, P95 11.29 ms (comfortable), size 319 KB
+02:42:03 | INFO    | [11/12] Gradient Boosting (ml, input: features)
+02:42:25 | INFO    |   trained in 22.7s (peak +2 MB)
+02:42:26 | INFO    |   test: acc 0.432  bal.acc 0.432  macro-F1 0.397
+02:42:28 | INFO    |   CPU latency: median 6.21 ms, P95 9.88 ms (comfortable), size 162 KB
+02:42:29 | INFO    | [12/12] MLP (ml, input: features)
+02:42:37 | INFO    |   trained in 8.3s (peak +5 MB)
+02:42:38 | INFO    |   test: acc 0.271  bal.acc 0.271  macro-F1 0.240
+02:42:40 | INFO    |   CPU latency: median 5.32 ms, P95 8.07 ms (comfortable), size 384 KB
+02:43:04 | INFO    | experiment folder: D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\results\smoke_ml
+02:43:05 | INFO    | dataset: 100 recordings, 5 subject(s), 10 class(es): ['closed_fist', 'double_fist', 'down', 'left', 'pinch', 'rest', 'right', 'thumbs_up', 'up', 'victory']
+02:43:05 | INFO    | split mode (auto): subject
+02:43:06 | WARNING | skipping cnn1d: family 'dl' not enabled
+02:43:06 | WARNING | skipping cnn2d: family 'dl' not enabled
+02:43:06 | WARNING | skipping lstm: family 'dl' not enabled
+02:43:06 | WARNING | skipping bilstm: family 'dl' not enabled
+02:43:06 | WARNING | skipping gru: family 'dl' not enabled
+02:43:06 | WARNING | skipping transformer: family 'dl' not enabled
+02:43:06 | WARNING | skipping cnn_lstm: family 'hybrid' not enabled
+02:43:06 | WARNING | skipping cnn_gru: family 'hybrid' not enabled
+02:43:06 | WARNING | skipping cnn_bilstm: family 'hybrid' not enabled
+02:43:06 | WARNING | skipping cnn_tcn: family 'hybrid' not enabled
+02:43:06 | WARNING | skipping cnn_attention: family 'hybrid' not enabled
+02:43:06 | WARNING | skipping cnn_transformer: family 'hybrid' not enabled
+02:43:06 | WARNING | skipping cnn_rf: family 'hybrid' not enabled
+02:43:08 | INFO    | split 'subject': windows {'train': 5820, 'val': 1940, 'test': 1940} (feature dim 204)
+02:43:08 | INFO    | device: cpu | models: ['rf', 'extra_trees', 'xgboost', 'lightgbm', 'catboost', 'svm_rbf', 'svm_linear', 'knn', 'logreg', 'lda', 'gradient_boosting', 'mlp']
+02:43:08 | INFO    | [1/12] Random Forest - already done, skipping (--resume)
+02:43:08 | INFO    | [2/12] Extra Trees - already done, skipping (--resume)
+02:43:08 | INFO    | [3/12] XGBoost - already done, skipping (--resume)
+02:43:08 | INFO    | [4/12] LightGBM - already done, skipping (--resume)
+02:43:08 | INFO    | [5/12] CatBoost - already done, skipping (--resume)
+02:43:08 | INFO    | [6/12] SVM (RBF) - already done, skipping (--resume)
+02:43:08 | INFO    | [7/12] SVM (linear) - already done, skipping (--resume)
+02:43:08 | INFO    | [8/12] k-NN - already done, skipping (--resume)
+02:43:08 | INFO    | [9/12] Logistic Regression - already done, skipping (--resume)
+02:43:08 | INFO    | [10/12] LDA - already done, skipping (--resume)
+02:43:08 | INFO    | [11/12] Gradient Boosting - already done, skipping (--resume)
+02:43:08 | INFO    | [12/12] MLP - already done, skipping (--resume)
+02:43:14 | INFO    | ==============================================================================
+02:43:14 | INFO    | DONE: 12/12 models -> D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\results\smoke_ml
+02:43:14 | INFO    |   Best overall classification performance              Random Forest
+02:43:14 | INFO    |   Best Macro F1-score                                  XGBoost
+02:43:14 | INFO    |   Best subject-independent generalisation              XGBoost
+02:43:14 | INFO    |   Fastest model for inference                          Gradient Boosting
+02:43:14 | INFO    |   Best model for real-time deployment                  Gradient Boosting
+02:43:14 | INFO    |   Best lightweight model                               LightGBM
+02:43:14 | INFO    |   Best deep learning architecture                      n/a
+02:43:14 | INFO    |   Best hybrid architecture                             n/a
+02:43:14 | INFO    | report: D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\results\smoke_ml\summary_report.md

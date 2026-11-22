@@ -1,0 +1,58 @@
+[
+  {
+    "criterion": "Best overall classification performance",
+    "model": "rf",
+    "label": "Random Forest",
+    "value": "score 0.474 (acc 0.486, bal.acc 0.486, macro-F1 0.462)",
+    "why": "Weighted blend of macro-F1/balanced-accuracy/accuracy ({'f1_macro': 0.5, 'balanced_accuracy': 0.25, 'accuracy': 0.25}); not accuracy alone."
+  },
+  {
+    "criterion": "Best Macro F1-score",
+    "model": "xgboost",
+    "label": "XGBoost",
+    "value": "0.467",
+    "why": "Treats every gesture equally, so it exposes weak classes that accuracy hides."
+  },
+  {
+    "criterion": "Best subject-independent generalisation",
+    "model": "xgboost",
+    "label": "XGBoost",
+    "value": "mean macro-F1 over held-out subjects 0.467 +/- 0.000",
+    "why": "Trained without the test subjects; ranked by mean minus half the std across held-out subjects (rewards consistency)."
+  },
+  {
+    "criterion": "Fastest model for inference",
+    "model": "gradient_boosting",
+    "label": "Gradient Boosting",
+    "value": "P95 9.884 ms, median 6.210 ms",
+    "why": "Lowest P95 end-to-end latency among models within 0.15 macro-F1 of the best (absolute fastest: Logistic Regression at 7.98 ms, but macro-F1 only 0.194)."
+  },
+  {
+    "criterion": "Best model for real-time deployment",
+    "model": "gradient_boosting",
+    "label": "Gradient Boosting",
+    "value": "rt-score 0.529: macro-F1 0.397, P95 9.88 ms (comfortable), 162 KB",
+    "why": "Max of {'f1_macro': 0.6, 'latency': 0.25, 'size': 0.15} over accuracy, latency headroom vs the 50 ms budget and size; models over budget are excluded."
+  },
+  {
+    "criterion": "Best lightweight model",
+    "model": "lightgbm",
+    "label": "LightGBM",
+    "value": "360.7 KB, macro-F1 0.432",
+    "why": "Smallest on-disk model among those within 0.05 macro-F1 of the best."
+  },
+  {
+    "criterion": "Best deep learning architecture",
+    "model": null,
+    "label": null,
+    "value": null,
+    "why": "No model of this family completed."
+  },
+  {
+    "criterion": "Best hybrid architecture",
+    "model": null,
+    "label": null,
+    "value": null,
+    "why": "No model of this family completed."
+  }
+]

@@ -1,0 +1,376 @@
+{
+  "row": {
+    "model": "gradient_boosting",
+    "label": "Gradient Boosting",
+    "family": "ml",
+    "input_kind": "features",
+    "train_time_s": 9.380121600001075,
+    "train_peak_mem_mb": 1.14688,
+    "n_params": null,
+    "val_accuracy": 0.44896907216494847,
+    "val_f1_macro": 0.428879004920403,
+    "accuracy": 0.43195876288659796,
+    "balanced_accuracy": 0.4319587628865979,
+    "precision_macro": 0.4582862525406185,
+    "precision_weighted": 0.4582862525406186,
+    "recall_macro": 0.4319587628865979,
+    "recall_weighted": 0.43195876288659796,
+    "f1_macro": 0.39744005580989505,
+    "f1_weighted": 0.3974400558098951,
+    "roc_auc_macro": 0.8618574414567612,
+    "accuracy_ci95_halfwidth": 0.04408555156221206,
+    "n_windows": 1940,
+    "group_f1_mean": 0.39744005580989505,
+    "group_f1_std": 0.0,
+    "group_f1_min": 0.39744005580989505,
+    "n_groups": 1,
+    "val_test_f1_gap": 0.03143894911050793,
+    "batch32_latency_ms": 6.75675,
+    "batch32_per_window_ms": 0.2111484375,
+    "batch32_throughput_wps": 4736.004736004736,
+    "lat_mean_ms": 3.207375,
+    "lat_median_ms": 2.8849,
+    "lat_p95_ms": 4.71884,
+    "lat_p99_ms": 5.004910999999999,
+    "lat_max_ms": 5.2274,
+    "lat_std_ms": 0.7182046771000127,
+    "prep_median_ms": 1.4054,
+    "model_only_median_ms": 1.1572,
+    "avg_time_per_window_ms": 3.207375,
+    "throughput_single_wps": 311.781441209712,
+    "inference_peak_mem_mb": 0.028672,
+    "model_size_kb": 162.359375,
+    "load_time_ms": 64.28529999902821,
+    "realtime_budget_ms": 50.0,
+    "realtime_status": "comfortable",
+    "realtime_headroom_x": 10.595824397521424
+  },
+  "per_class": [
+    {
+      "gesture": "closed_fist",
+      "precision": 0.6176470588235294,
+      "recall": 0.7577319587628866,
+      "f1": 0.6805555555555556,
+      "support": 194,
+      "roc_auc": 0.9072283038698173
+    },
+    {
+      "gesture": "double_fist",
+      "precision": 0.9245283018867925,
+      "recall": 0.25257731958762886,
+      "f1": 0.3967611336032389,
+      "support": 194,
+      "roc_auc": 0.9203687958337762
+    },
+    {
+      "gesture": "down",
+      "precision": 0.6139534883720931,
+      "recall": 0.6804123711340206,
+      "f1": 0.6454767726161369,
+      "support": 194,
+      "roc_auc": 0.9147860795219707
+    },
+    {
+      "gesture": "left",
+      "precision": 0.2413793103448276,
+      "recall": 0.14432989690721648,
+      "f1": 0.18064516129032257,
+      "support": 194,
+      "roc_auc": 0.6859891829335978
+    },
+    {
+      "gesture": "pinch",
+      "precision": 0.33260393873085337,
+      "recall": 0.7835051546391752,
+      "f1": 0.46697388632872505,
+      "support": 194,
+      "roc_auc": 0.8859513940553371
+    },
+    {
+      "gesture": "rest",
+      "precision": 0.5509259259259259,
+      "recall": 0.6134020618556701,
+      "f1": 0.5804878048780487,
+      "support": 194,
+      "roc_auc": 0.9376188283085936
+    },
+    {
+      "gesture": "right",
+      "precision": 0.27906976744186046,
+      "recall": 0.12371134020618557,
+      "f1": 0.17142857142857143,
+      "support": 194,
+      "roc_auc": 0.8819806095818424
+    },
+    {
+      "gesture": "thumbs_up",
+      "precision": 0.330188679245283,
+      "recall": 0.36082474226804123,
+      "f1": 0.3448275862068966,
+      "support": 194,
+      "roc_auc": 0.8083985781934553
+    },
+    {
+      "gesture": "up",
+      "precision": 0.335423197492163,
+      "recall": 0.5515463917525774,
+      "f1": 0.4171539961013645,
+      "support": 194,
+      "roc_auc": 0.8349216471227313
+    },
+    {
+      "gesture": "victory",
+      "precision": 0.35714285714285715,
+      "recall": 0.05154639175257732,
+      "f1": 0.09009009009009009,
+      "support": 194,
+      "roc_auc": 0.8413309951464911
+    }
+  ],
+  "confusion_matrix": [
+    [
+      147,
+      0,
+      8,
+      1,
+      17,
+      4,
+      7,
+      1,
+      8,
+      1
+    ],
+    [
+      43,
+      49,
+      6,
+      28,
+      49,
+      12,
+      1,
+      1,
+      3,
+      2
+    ],
+    [
+      1,
+      0,
+      132,
+      2,
+      25,
+      0,
+      6,
+      1,
+      23,
+      4
+    ],
+    [
+      9,
+      0,
+      2,
+      28,
+      5,
+      2,
+      8,
+      125,
+      15,
+      0
+    ],
+    [
+      8,
+      0,
+      1,
+      2,
+      152,
+      10,
+      1,
+      3,
+      15,
+      2
+    ],
+    [
+      0,
+      2,
+      4,
+      6,
+      10,
+      119,
+      19,
+      3,
+      31,
+      0
+    ],
+    [
+      0,
+      0,
+      31,
+      0,
+      15,
+      23,
+      24,
+      0,
+      101,
+      0
+    ],
+    [
+      13,
+      0,
+      0,
+      36,
+      50,
+      1,
+      10,
+      70,
+      13,
+      1
+    ],
+    [
+      17,
+      1,
+      25,
+      3,
+      17,
+      8,
+      8,
+      0,
+      107,
+      8
+    ],
+    [
+      0,
+      1,
+      6,
+      10,
+      117,
+      37,
+      2,
+      8,
+      3,
+      10
+    ]
+  ],
+  "by_group": {
+    "subject": {
+      "S05": {
+        "accuracy": 0.43195876288659796,
+        "f1_macro": 0.39744005580989505,
+        "n_windows": 1940
+      }
+    },
+    "session": {
+      "S05|sess1": {
+        "accuracy": 0.40824742268041236,
+        "f1_macro": 0.38264486721093005,
+        "n_windows": 970
+      },
+      "S05|sess2": {
+        "accuracy": 0.4556701030927835,
+        "f1_macro": 0.4018219484731163,
+        "n_windows": 970
+      }
+    },
+    "rec": {
+      "emg_20261101_140100_S05_sess1_left_trial1": {
+        "accuracy": 0.20618556701030927,
+        "f1_macro": 0.04884004884004884,
+        "n_windows": 97
+      },
+      "emg_20261101_140101_S05_sess1_right_trial1": {
+        "accuracy": 0.16494845360824742,
+        "f1_macro": 0.05663716814159292,
+        "n_windows": 97
+      },
+      "emg_20261101_140102_S05_sess1_up_trial1": {
+        "accuracy": 0.6288659793814433,
+        "f1_macro": 0.12869198312236288,
+        "n_windows": 97
+      },
+      "emg_20261101_140103_S05_sess1_down_trial1": {
+        "accuracy": 0.6701030927835051,
+        "f1_macro": 0.16049382716049382,
+        "n_windows": 97
+      },
+      "emg_20261101_140104_S05_sess1_closed_fist_trial1": {
+        "accuracy": 0.5773195876288659,
+        "f1_macro": 0.1045751633986928,
+        "n_windows": 97
+      },
+      "emg_20261101_140105_S05_sess1_double_fist_trial1": {
+        "accuracy": 0.27835051546391754,
+        "f1_macro": 0.05443548387096774,
+        "n_windows": 97
+      },
+      "emg_20261101_140106_S05_sess1_victory_trial1": {
+        "accuracy": 0.09278350515463918,
+        "f1_macro": 0.02425876010781671,
+        "n_windows": 97
+      },
+      "emg_20261101_140107_S05_sess1_thumbs_up_trial1": {
+        "accuracy": 0.020618556701030927,
+        "f1_macro": 0.005772005772005773,
+        "n_windows": 97
+      },
+      "emg_20261101_140108_S05_sess1_pinch_trial1": {
+        "accuracy": 0.6804123711340206,
+        "f1_macro": 0.11568799298860648,
+        "n_windows": 97
+      },
+      "emg_20261101_140109_S05_sess1_rest_trial1": {
+        "accuracy": 0.7628865979381443,
+        "f1_macro": 0.10818713450292397,
+        "n_windows": 97
+      },
+      "emg_20261101_140200_S05_sess2_left_trial1": {
+        "accuracy": 0.08247422680412371,
+        "f1_macro": 0.01904761904761905,
+        "n_windows": 97
+      },
+      "emg_20261101_140201_S05_sess2_right_trial1": {
+        "accuracy": 0.08247422680412371,
+        "f1_macro": 0.03047619047619048,
+        "n_windows": 97
+      },
+      "emg_20261101_140202_S05_sess2_up_trial1": {
+        "accuracy": 0.4742268041237113,
+        "f1_macro": 0.08041958041958042,
+        "n_windows": 97
+      },
+      "emg_20261101_140203_S05_sess2_down_trial1": {
+        "accuracy": 0.6907216494845361,
+        "f1_macro": 0.16341463414634144,
+        "n_windows": 97
+      },
+      "emg_20261101_140204_S05_sess2_closed_fist_trial1": {
+        "accuracy": 0.9381443298969072,
+        "f1_macro": 0.16134751773049646,
+        "n_windows": 97
+      },
+      "emg_20261101_140205_S05_sess2_double_fist_trial1": {
+        "accuracy": 0.2268041237113402,
+        "f1_macro": 0.046218487394957986,
+        "n_windows": 97
+      },
+      "emg_20261101_140206_S05_sess2_victory_trial1": {
+        "accuracy": 0.010309278350515464,
+        "f1_macro": 0.0029154518950437317,
+        "n_windows": 97
+      },
+      "emg_20261101_140207_S05_sess2_thumbs_up_trial1": {
+        "accuracy": 0.7010309278350515,
+        "f1_macro": 0.27474747474747474,
+        "n_windows": 97
+      },
+      "emg_20261101_140208_S05_sess2_pinch_trial1": {
+        "accuracy": 0.8865979381443299,
+        "f1_macro": 0.15664845173041894,
+        "n_windows": 97
+      },
+      "emg_20261101_140209_S05_sess2_rest_trial1": {
+        "accuracy": 0.4639175257731959,
+        "f1_macro": 0.09054325955734407,
+        "n_windows": 97
+      }
+    }
+  },
+  "history": {}
+}

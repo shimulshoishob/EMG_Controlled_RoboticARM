@@ -1,0 +1,14 @@
+# Model_Training dependencies (kept separate from the app's requirements.txt on purpose).
+# Core (required)
+numpy
+scipy
+pandas
+scikit-learn>=1.3
+joblib
+matplotlib
+psutil
+# Optional - a model whose library is missing is skipped with a clear message
+torch<2.10      # 2.9.x verified on Windows 11 (2.15 failed to load torch_cpu.dll). CPU build: pip install "torch<2.10" --index-url https://download.pytorch.org/whl/cpu
+xgboost
+lightgbm
+catboost
