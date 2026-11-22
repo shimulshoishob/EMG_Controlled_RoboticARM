@@ -1,0 +1,20 @@
+{
+  "python": "3.13.0",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "cpu_count": 12,
+  "libraries": {
+    "numpy": "2.5.5",
+    "scipy": "1.18.1",
+    "pandas": "3.1.1",
+    "sklearn": "1.9.1",
+    "torch": null,
+    "xgboost": "3.4.1",
+    "lightgbm": "4.7.0",
+    "catboost": "1.2.10",
+    "matplotlib": "3.11.2",
+    "psutil": "7.2.2",
+    "joblib": "1.6.0"
+  },
+  "ram_gb": 7.9,
+  "cuda_available": false
+}

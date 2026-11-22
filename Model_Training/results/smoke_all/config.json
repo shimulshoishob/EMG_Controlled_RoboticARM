@@ -1,0 +1,165 @@
+{
+  "data": {
+    "paths": [
+      "D:\\RoboArm\\EMG_Controlled_RoboticARM\\Model_Training\\data_demo"
+    ],
+    "patterns": [
+      "*.csv",
+      "*.tsv",
+      "*.txt",
+      "*.parquet",
+      "*.npy"
+    ],
+    "recursive": true,
+    "channel_columns": null,
+    "channel_regex": "^(emg|ch|chan|channel|sensor)[ _-]?\\d+$",
+    "n_channels": null,
+    "time_column": null,
+    "label_column": null,
+    "subject_column": null,
+    "session_column": null,
+    "filename_pattern": null,
+    "default_subject": "S00",
+    "default_session": "sess1",
+    "sampling_rate": 500.0,
+    "auto_detect_sampling_rate": true,
+    "gesture_classes": null,
+    "gesture_aliases": {},
+    "min_recording_s": 1.0,
+    "max_nan_fraction": 0.1,
+    "trim_s": 0.0,
+    "min_windows_per_class": 20
+  },
+  "preprocess": {
+    "window_ms": 200.0,
+    "stride_ms": 50.0,
+    "remove_dc": true,
+    "bandpass_hz": [
+      20.0,
+      220.0
+    ],
+    "filter_order": 4,
+    "notch_hz": null
+  },
+  "features": {
+    "time_domain": true,
+    "frequency_domain": true,
+    "cross_channel": true,
+    "freq_range_hz": [
+      20.0,
+      220.0
+    ],
+    "bands_hz": [
+      [
+        20.0,
+        60.0
+      ],
+      [
+        60.0,
+        120.0
+      ],
+      [
+        120.0,
+        220.0
+      ]
+    ],
+    "zc_ssc_rel_threshold": 0.05,
+    "wamp_rel_threshold": 0.25
+  },
+  "split": {
+    "mode": "auto",
+    "val_size": 0.15,
+    "test_size": 0.2,
+    "seed": 42
+  },
+  "cv": {
+    "enabled": false,
+    "folds": 3,
+    "scope": "ml"
+  },
+  "tuning": {
+    "enabled": false,
+    "models": [],
+    "n_iter": 6,
+    "folds": 3
+  },
+  "train": {
+    "seed": 42,
+    "device": "auto",
+    "n_jobs": 4,
+    "torch_threads": 4,
+    "epochs": 8,
+    "batch_size": 128,
+    "lr": 0.002,
+    "weight_decay": 0.0001,
+    "patience": 4,
+    "dropout": 0.3,
+    "augment": true,
+    "class_weight": true,
+    "max_train_seconds": 120.0,
+    "cv_epochs": 12,
+    "model_params": {
+      "rf": {
+        "n_estimators": 60
+      },
+      "extra_trees": {
+        "n_estimators": 60
+      },
+      "xgboost": {
+        "n_estimators": 80
+      },
+      "lightgbm": {
+        "n_estimators": 80
+      },
+      "catboost": {
+        "iterations": 80
+      },
+      "gradient_boosting": {
+        "n_estimators": 40
+      },
+      "mlp": {
+        "max_iter": 80
+      }
+    }
+  },
+  "models": {
+    "enabled": "all",
+    "families": [
+      "ml",
+      "dl",
+      "hybrid"
+    ],
+    "exclude": []
+  },
+  "benchmark": {
+    "enabled": true,
+    "threads": 1,
+    "warmup": 10,
+    "n_single": 60,
+    "batch_sizes": [
+      32
+    ],
+    "load_repeats": 3,
+    "budget_ms": null,
+    "comfortable_fraction": 0.25
+  },
+  "ranking": {
+    "f1_tolerance": 0.05,
+    "perf_weights": {
+      "f1_macro": 0.5,
+      "balanced_accuracy": 0.25,
+      "accuracy": 0.25
+    },
+    "rt_weights": {
+      "f1_macro": 0.6,
+      "latency": 0.25,
+      "size": 0.15
+    }
+  },
+  "output": {
+    "root": "results",
+    "name": "smoke_all",
+    "save_models": true,
+    "top_n_radar": 5
+  }
+}

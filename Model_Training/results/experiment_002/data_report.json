@@ -1,0 +1,13 @@
+{
+  "files_found": 1,
+  "loaded": 0,
+  "skipped": [
+    {
+      "file": "emg_20261108_185041_s011.csv",
+      "reason": "no label (no label column and no gesture in the file name)"
+    }
+  ],
+  "paths": [
+    "D:\\RoboArm\\EMG_Controlled_RoboticARM\\recordings"
+  ]
+}

@@ -1,0 +1,11 @@
+,closed_fist,double_fist,down,left,pinch,rest,right,thumbs_up,up,victory
+closed_fist,120,5,0,0,0,59,5,0,5,0
+double_fist,3,127,0,0,0,64,0,0,0,0
+down,0,0,127,0,0,67,0,0,0,0
+left,0,0,0,60,0,58,0,76,0,0
+pinch,0,6,2,3,86,59,0,38,0,0
+rest,4,0,28,0,0,143,19,0,0,0
+right,0,0,31,0,0,69,2,0,92,0
+thumbs_up,0,0,0,23,0,57,0,114,0,0
+up,0,0,1,0,0,65,1,0,127,0
+victory,0,2,0,0,117,67,3,0,0,5

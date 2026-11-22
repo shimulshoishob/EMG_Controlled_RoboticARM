@@ -1,0 +1,59 @@
+{
+  "n_recordings": 100,
+  "n_channels": 8,
+  "channel_names": [
+    "emg1",
+    "emg2",
+    "emg3",
+    "emg4",
+    "emg5",
+    "emg6",
+    "emg7",
+    "emg8"
+  ],
+  "sampling_rate": 500.0,
+  "subjects": [
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05"
+  ],
+  "sessions": [
+    "S01|sess1",
+    "S01|sess2",
+    "S02|sess1",
+    "S02|sess2",
+    "S03|sess1",
+    "S03|sess2",
+    "S04|sess1",
+    "S04|sess2",
+    "S05|sess1",
+    "S05|sess2"
+  ],
+  "total_seconds": 500.0,
+  "seconds_per_class": {
+    "closed_fist": 50.0,
+    "double_fist": 50.0,
+    "down": 50.0,
+    "left": 50.0,
+    "pinch": 50.0,
+    "rest": 50.0,
+    "right": 50.0,
+    "thumbs_up": 50.0,
+    "up": 50.0,
+    "victory": 50.0
+  },
+  "classes": [
+    "closed_fist",
+    "double_fist",
+    "down",
+    "left",
+    "pinch",
+    "rest",
+    "right",
+    "thumbs_up",
+    "up",
+    "victory"
+  ]
+}
