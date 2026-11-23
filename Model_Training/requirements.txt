@@ -12,3 +12,6 @@ torch<2.10      # 2.9.x verified on Windows 11 (2.15 failed to load torch_cpu.dl
 xgboost
 lightgbm
 catboost
+# GUI application (Model_Training/app)
+PySide6
+threadpoolctl

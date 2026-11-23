@@ -99,3 +99,106 @@ synthetic.py     fake data for smoke tests               tests/          python 
 * Hardware here (6-core Ryzen, no CUDA torch): deep models train on CPU; latencies are CPU/single-thread numbers for *this* machine.
 * In `cnn_rf` the forest is trained on embeddings of windows the CNN already fitted, so it cannot repair CNN overfitting.
 * GPU is used for deep models (and XGBoost) only when CUDA is available; benchmarks are always CPU.
+
+---
+
+# Model Training Studio (GUI application) - `app/`
+
+A desktop app that trains **several of the models above at the same time** on any tabular CSV, compares them,
+and exports every successful model as a reusable `.joblib` file. It reuses `models/registry.py` (all 25 models,
+their factories and defaults), `evaluation.evaluate`, `config.TrainConfig` and `utils` - nothing was duplicated.
+`model_train.py` (the EMG benchmark CLI) is untouched and still works.
+
+## Install and start
+
+```bash
+cd EMG_Controlled_RoboticARM
+python3.12 -m venv Model_Training/.venv && source Model_Training/.venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -r Model_Training/requirements.txt
+python Model_Training/app/main.py                       # optionally: ... main.py path/to/data.csv
+```
+Developed and tested on Python 3.12 (macOS). XGBoost / LightGBM / CatBoost / PyTorch are optional: a model whose library is missing is greyed out
+with the reason (hover the row) and everything else still works. Two ready-made datasets are in `datasets/`
+(`sample_breast_cancer_classification.csv`, `sample_diabetes_regression.csv`).
+
+## Using it
+
+1. **Data** - *Open CSV*. You get rows / columns / missing cells / duplicate rows, every column's dtype, missing %, unique count and example,
+   and a statistical summary. Pick the **target column** (the last column is pre-selected). Numeric vs categorical features are detected
+   automatically (numbers stored as text are recognised, ID-like and free-text columns are set to `ignore`); change any column's *Role* if you disagree.
+   The task (classification / regression) is auto-detected and can be overridden on the next tab.
+2. **Configure** - split size and seed, duplicate removal, constant-feature removal, imputation, scaling, one-hot/ordinal encoding,
+   optional `SelectKBest`, class balancing, how many models run at once, and the model checklist (*Select all*, *Classical ML only*, ...).
+3. **Train** - *Start training*. Each model is a separate **process** with its own row: **Pending -> Training -> Completed / Failed / Cancelled**,
+   progress, duration and, when finished, its headline metric and exported file (double-click a row's file to reveal it).
+   *Cancel all* or right-click a row -> *Cancel this model*. A failing model never stops the others; its error is shown and logged.
+4. **Results** - best-model banner, ranked comparison table, metric bar charts, time and size charts, confusion matrix (classification) or
+   predicted-vs-actual (regression) per model, list of exported files, and buttons for the folders and log.
+
+**Themes:** the *Theme* box (top right) switches between **Light**, **Dark** and **Pink**. The choice is remembered; on first start it follows the macOS appearance.
+Every colour (palette, stylesheet, charts) comes from one token set in `gui.py::THEMES`, so text stays readable in macOS Light and Dark mode. Saved report PNGs are always light.
+
+## Which models run on a generic CSV
+
+| Task | Models |
+|---|---|
+| Classification | all 25 of the registry: 12 classical (consume the preprocessed feature matrix) + 6 deep + 7 hybrid. The deep/hybrid nets were written for `(N, channels, time)` EMG windows; a tabular row is fed as a **1-channel sequence of length n_features** (the 2-D CNN gets the row padded into a 4 x T grid). Needs PyTorch. |
+| Regression | the 11 classical models as their regressor equivalents with the registry's default hyper-parameters (the registry itself is classification-only): RF, Extra Trees, XGBoost, LightGBM, CatBoost, SVR (RBF / linear), k-NN, Ridge (in place of logistic regression), Gradient Boosting, MLP. LDA and the cross-entropy networks are classification-only. |
+
+Deep models on small tabular data are usually worse than tree/SVM models (see the sample results) - they are included because they are in the registry, not because they are recommended for tables.
+
+## Metrics
+
+Classification: accuracy, precision, recall, F1 (macro; weighted ones are in the JSON), confusion matrix, one-vs-rest macro ROC-AUC
+(SVMs use softmax of the decision scores, noted in the report). Regression: MAE, MSE, RMSE, R². Always: training time (preprocessing + fit),
+test prediction time and exported file size. **Best model = highest macro-F1 (classification) or R² (regression)**, ties broken by training time.
+
+## Leakage and reproducibility
+
+* One train/test split (stratified for classification, `seed`) is made **before** anything is learned; duplicates are removed before it.
+* Imputation, scaling, encoding, constant-feature removal and feature selection are **fitted on the training rows only** inside each worker and then applied to the test rows.
+* Early stopping (boosters, deep nets) uses a 15 % validation slice carved out of the *training* rows; the test set is only used for the final scores.
+* Every model gets the same split and the same preprocessing code; seeds are set in every process.
+
+## Output layout
+
+```
+Model_Training/
+  datasets/                          sample / your CSVs (the file picker opens here)
+  outputs/
+    trained_models/<Model>_<run>.joblib + .json       e.g. RandomForest_20261123_101500.joblib  (run id = timestamp, never overwritten)
+    evaluation_reports/<run>/        report.md, model_comparison.csv, training_status.csv, <model>.json (full metrics, confusion matrix, per-class)
+    plots/<run>/                     scores.png, time_and_size.png, confusion_<model>.png / pred_vs_actual_<model>.png
+  logs/training_<run>.log            everything the GUI log pane shows, including full tracebacks of failures
+```
+Each `.joblib` is a dict: `pipeline` (**preprocessing + model in one scikit-learn `Pipeline`**), `label_encoder`, `classes`, `target`, feature lists and `metadata`
+(model + parameters, preprocessing options, seed, split sizes, timings, metrics, library versions). A sibling `.json` holds the same metadata. After saving, each worker
+reloads the file and checks that it reproduces the pipeline's predictions (`reload_check: ok`); a model that fails this check is reported as Failed.
+
+## Use an exported model
+
+```python
+from Model_Training.app.inference import load_bundle, predict
+bundle = load_bundle("Model_Training/outputs/trained_models/RandomForest_20261123_101500.joblib")
+labels = predict(bundle, new_dataframe)          # raw columns, same names as the training CSV; labels in the original form
+proba  = predict(bundle, new_dataframe, return_proba=True)   # not available for SVMs
+```
+Without the package: `joblib.load(path)["pipeline"].predict(df)` returns encoded class indices (use `bundle["label_encoder"]` to decode) - pass categorical
+columns as strings, numbers as numbers. Deep/hybrid bundles additionally need `torch` and `Model_Training` importable (`load_bundle` handles the path).
+
+## Parallelism, in short
+
+`app/engine.py` starts one spawned process per model (at most *Models trained at once*; the rest wait as *Pending*) and polls them from a GUI timer, so the window never blocks.
+CPU threads are split across the running models (`cores / parallel`). Cancelling terminates the processes and deletes half-written output; closing the window while training asks first.
+
+## Code map
+
+`app/main.py` launcher · `gui.py` PySide6 UI · `engine.py` scheduler / cancel / crash isolation · `worker.py` one model's train -> evaluate -> export ·
+`preprocess.py` analysis, type inference, split, preprocessing pipeline · `catalog.py` model list from the registry · `regression.py` regressors + metrics ·
+`estimators.py` torch-in-sklearn adapter · `reports.py` tables, charts, report files · `inference.py` loading helper · tests: `python -m unittest discover Model_Training/tests`.
+
+## Limitations
+
+* No hyper-parameter tuning or cross-validation in the GUI (defaults from the registry; the EMG CLI has `--tune` and group-aware CV).
+* The whole CSV is held in memory; very large files (millions of rows) will be slow for the O(n^2) SVMs.
+* A model's *Duration* includes process start-up (a few seconds, mostly importing PyTorch/XGBoost), which dominates on small datasets; the *Train time* column in Results is the real preprocessing + fit time.

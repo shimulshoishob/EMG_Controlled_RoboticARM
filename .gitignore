@@ -3,3 +3,4 @@ poses.json
 settings.json
 __pycache__/
 .venv/
+Model_Training/outputs/
