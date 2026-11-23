@@ -64,6 +64,12 @@ def comparison_table(results: List[dict], task: str) -> pd.DataFrame:
         row = {"Model": r["label"], "Family": r["family"]}
         for k, name in COLUMNS[task]:
             row[name] = r["metrics"].get(k)
+        rt = r.get("realtime") or {}
+        if r.get("realtime") is not None:                          # EMG gesture runs: deployment-oriented columns
+            row["Bal. acc"] = r["metrics"].get("balanced_accuracy")
+            row["Smoothed F1"] = rt.get("f1_macro_smoothed")
+            row["Worst subject F1"] = (r.get("group_spread") or {}).get("group_f1_min")
+            row["Latency P95 (ms)"] = rt.get("lat_p95_ms")
         row["Train time (s)"] = r["train_time_s"]
         row["Size (KB)"] = r["model_size_bytes"] / 1024.0
         row["Artifact"] = r["artifact"]
@@ -204,7 +210,7 @@ def write_reports(engine) -> Dict[str, str]:
 def _write_reports(engine) -> Dict[str, str]:
     """Write summary.csv/json, report.md, one JSON per model and the PNG plots; returns the paths."""
     plan = engine.plan
-    task = plan.prepared.task
+    task = plan.task
     results = engine.results()
     rdir, pdir = plan.dirs.reports / plan.run_id, plan.dirs.plots / plan.run_id
     rdir.mkdir(parents=True, exist_ok=True)
@@ -233,12 +239,12 @@ def _write_reports(engine) -> Dict[str, str]:
 
     prim = PRIMARY[task][1]
     lines = [f"# Training report - run {plan.run_id}", "",
-             f"- Task: **{task}**, target `{plan.prepared.target}`",
-             f"- Dataset: {plan.dataset_info.get('name')} ({plan.dataset_info.get('rows_used')} rows used of "
-             f"{plan.dataset_info.get('rows_original')})",
-             f"- Split: {len(plan.prepared.X_train)} train / {len(plan.prepared.X_test)} test rows (seed {plan.options.seed})",
-             f"- Preprocessing: `{json.dumps(plan.options.to_dict())}`", ""]
-    for w in plan.prepared.warnings:
+             f"- Task: **{task}**, target `{plan.target}`",
+             f"- Dataset: {plan.dataset_info.get('name')} - " + (plan.dataset_info.get("summary") or
+             f"{plan.dataset_info.get('rows_used')} rows used of {plan.dataset_info.get('rows_original')}"),
+             f"- Split: {plan.n_train} train / {plan.n_test} test {'windows' if plan.kind == 'emg' else 'rows'} (seed {plan.seed})",
+             f"- Settings: `{json.dumps(plan.options, default=str)}`", ""]
+    for w in plan.warnings:
         lines.append(f"> Warning: {w}")
     lines += ["", f"## Best model: {best['label']} ({prim} = {best['metrics'][PRIMARY[task][0]]:.4f})" if best
               else "## No model completed", "", "## Status", ""]

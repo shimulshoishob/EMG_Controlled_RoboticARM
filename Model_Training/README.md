@@ -202,3 +202,71 @@ CPU threads are split across the running models (`cores / parallel`). Cancelling
 * No hyper-parameter tuning or cross-validation in the GUI (defaults from the registry; the EMG CLI has `--tune` and group-aware CV).
 * The whole CSV is held in memory; very large files (millions of rows) will be slow for the O(n^2) SVMs.
 * A model's *Duration* includes process start-up (a few seconds, mostly importing PyTorch/XGBoost), which dominates on small datasets; the *Train time* column in Results is the real preprocessing + fit time.
+
+---
+
+# EMG session folders (BioWave recordings) in the GUI
+
+In the app choose **Data source -> EMG session folders (BioWave)** and open the folder that contains your session folders
+(e.g. `BioWaveEMG_ArmBand/dataset`, or a single `S102_day01_right_...Z` folder). The same flow applies: *Data -> Configure -> Train -> Results*,
+with the same parallel engine, `.joblib` export and reports. CLI equivalent: `python Model_Training/model_train.py --data-path <folder> --split-mode trial`.
+
+## What is read from a session folder (`session_io.py`)
+
+`signals_*.csv` (samples) + `metadata_*.json/.txt` (participant, sampling rate, which columns are EMG, labels) + `quality_*.json` (packet loss).
+Legacy recordings (`Timestamp_ms/Packet_Number`, 11 channels) and folders that only hold `raw_*.bin` are listed on the *Skipped folders* tab with the reason, never silently dropped.
+On the sample dataset: 34 session folders loaded (18 subjects, 19 left / 15 right hand, 8 EMG channels, 500 Hz, 10 gestures incl. `rest`, ~106 usable minutes).
+
+## Preprocessing - what is done and why
+
+| Step | Reason |
+|---|---|
+| Only `Ch1-Ch8` (type `emg` in the channel map) are used | the IMU angles identify the pose/trial, not the muscle activity |
+| Samples with `Valid == 0` (lost packets, NaN) are masked; no window may contain one | interpolating invented data would be learned as signal |
+| Only the `perform` and `rest` phases are labelled; the `prepare` cue, `paused`, `switch_hand`, `end` never are | they are not gestures |
+| 0.5 s / 0.25 s trimmed from the start / end of every gesture, 1.0 s / 0.25 s from every rest | reaction time and relaxation after the gesture are not the gesture |
+| Rest is thinned to <= 2 x the mean gesture duration per session | rest follows every gesture; otherwise it is ~half of all data |
+| Sessions with < 90 % valid samples or a dead channel are skipped | listed with the reason |
+| Per window: DC removal, 20-220 Hz Butterworth band-pass (optional 50/60 Hz notch) | identical code in training and in the real-time classifier (no train/deploy skew) |
+| Time + frequency features (classical models) or filtered raw windows (deep models); z-score normalisers fitted on **train windows only** | no leakage |
+| Split by trials / people **before** windowing, with hard checks that no sample or group is shared | overlapping windows are near-copies of each other |
+
+**Evidence-based choices** (macro-F1 averaged over 8 sessions, personal model, held-out later repetitions): band-pass only 0.757-0.792, band-pass + 50 Hz notch 0.748-0.773 - the notch did **not** help (mains hum is
+strong on many channels but short 200 ms windows ring on a narrow notch), so it is off by default but selectable. A 300 ms window gave +0.01 to +0.03 over 200 ms, at +100 ms latency; 200 ms is the default.
+
+## Evaluation protocols - what the score means (choose on the Configure tab)
+
+| Test set = | Meaning | Measured on this dataset (macro-F1, 10 classes, chance 0.10) |
+|---|---|---|
+| **New people** (subject-independent) | a stranger puts the band on, nothing calibrated | **~0.30-0.33** (RF 0.32, LDA 0.33, 1D CNN 0.30, quick runs) - 3x chance but not usable; per-session feature normalisation lifts it to ~0.37 |
+| **Same people, later repetitions** (`trial`) | a user's own early trials train the model, later trials are tested | **0.72** SVM-RBF (0.76 with real-time smoothing), RF 0.71, k-NN 0.67, MLP 0.67, LDA 0.46 - one pooled model for all 34 sessions |
+| Personal model per session (script experiment) | one model per person/hand/session | **0.75-0.80** (LDA / SVM / Extra Trees) - best, and what a calibration step would give |
+| Interleaved time blocks (`temporal`) | blocks of the same trial in train and test | optimistic - shown with a warning |
+
+Take-aways for real use: **calibrate per user** (record the user's own repetitions and train/fine-tune on them); a single pooled model across people is the weakest option on dry-electrode data.
+A very high score (e.g. 1.00) on this kind of data means leakage - typically a label-like column used as a feature or a random row split.
+Deep models are trained with Adam (or AdamW, selectable) + one-cycle learning-rate schedule + early stopping; with few epochs they stay below the classical models here - raise *Deep-learning epochs*.
+
+## Real-time numbers in the results table
+
+* **Smoothed F1** - simulates the live loop: the decision is the argmax of the mean probability of the last *k* windows (default 5), history reset at each trial. Decision delay = window + (k-1) x stride.
+  It does not include the transition lag between two gestures.
+* **Latency P95 (ms)** - median/P95 of the whole deployed pipeline per window (filter + features + model), 1 CPU thread, from the existing `benchmark.py`; it runs while other models train, so treat it as an upper bound.
+  The budget it is judged against is the *decision interval* (default 50 ms).
+* **Worst subject F1** - lowest macro-F1 among held-out subjects; **Size** - the `.joblib` on disk (a 200-tree forest is ~90 MB, an SVM ~20 MB, an MLP/CNN well under 1 MB).
+
+## Use an exported EMG model
+
+```python
+from Model_Training.app.inference import load_gesture_classifier
+clf = load_gesture_classifier("Model_Training/outputs/trained_models/SVMRBF_20261123_101500.joblib")
+label, confidence = clf.predict_window(window)   # window: (clf.window_samples, 8) raw ADC counts; filtering/features/normalisation happen inside
+clf.classes, clf.fs, clf.window_samples, clf.stride_samples
+```
+The bundle (`format: emg_gesture_classifier`) also carries the settings, split, metrics and library versions (`metadata`, mirrored in the sidecar `.json`). Each export is reloaded and checked to reproduce its probabilities.
+
+## Limitations
+
+* Cross-person generalisation is weak on this data (see table); per-user calibration is the practical fix and is not automated in the GUI yet.
+* Pooled training treats left- and right-hand sessions as one distribution; training one model per hand/user may do better.
+* The 3 `raw_*.bin`-only folders and the legacy recordings are not read.

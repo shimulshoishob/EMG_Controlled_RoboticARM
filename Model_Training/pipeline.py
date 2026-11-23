@@ -40,6 +40,7 @@ class Partition:
     raw: np.ndarray                                # (N, C, T) normalised windows
     feat: Optional[np.ndarray]                     # (N, F) standardised features
     windows: Optional[np.ndarray] = None           # (N, T, C) unprocessed signal (benchmark input)
+    seg: Optional[np.ndarray] = None               # segment id per window (windows are chronological inside a segment)
 
     def data(self, input_kind: str) -> dict:
         return {"X": self.raw if input_kind == "raw" else self.feat, "y": self.y}
@@ -94,5 +95,5 @@ def prepare(recs: Sequence[Recording], pieces: Dict[str, List[Piece]], classes: 
             meta={"subject": ws.subject, "session": ws.session, "rec": ws.rec},
             raw=raw_norm.transform_windows(proc[name]),
             feat=scaler.transform_features(feats[name]) if ext else None,
-            windows=ws.X if name in keep_windows else None)
+            windows=ws.X if name in keep_windows else None, seg=ws.seg)
     return Prepared(classes, fs, C, win, pre, ext, scaler, raw_norm, parts)

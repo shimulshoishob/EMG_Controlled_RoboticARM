@@ -47,8 +47,13 @@ class WindowPreprocessor:
                 self.sos = butter(cfg.filter_order, hi, btype="low", fs=self.fs, output="sos")
         self.notch = None
         if cfg.notch_hz and cfg.notch_hz < nyq:
-            b, a = iirnotch(cfg.notch_hz, Q=30.0, fs=self.fs)
-            self.notch = tf2sos(b, a)
+            sections = []
+            for k in range(1, max(1, int(cfg.notch_harmonics)) + 1):
+                f0 = cfg.notch_hz * k
+                if f0 < nyq * 0.98:
+                    b, a = iirnotch(f0, Q=float(cfg.notch_q), fs=self.fs)
+                    sections.append(tf2sos(b, a))
+            self.notch = np.concatenate(sections) if sections else None
 
     def _apply(self, sos, x):
         # padlen of sosfiltfilt is ~3 * (2 * sections + 1); fall back to causal filtering for tiny windows
@@ -57,8 +62,11 @@ class WindowPreprocessor:
             return sosfiltfilt(sos, x, axis=1)
         return sosfilt(sos, x, axis=1)
 
-    def __call__(self, windows: np.ndarray) -> np.ndarray:
-        """windows: (N, T, C) -> float32 (N, T, C)."""
+    def __call__(self, windows: np.ndarray, chunk: int = 8192) -> np.ndarray:
+        """windows: (N, T, C) -> float32 (N, T, C).  Processed in chunks (identical result, bounded memory)."""
+        windows = np.asarray(windows)
+        if len(windows) > chunk:
+            return np.concatenate([self(windows[i:i + chunk], chunk) for i in range(0, len(windows), chunk)])
         x = np.asarray(windows, dtype=np.float64)
         if self.cfg.remove_dc:
             x = x - x.mean(axis=1, keepdims=True)

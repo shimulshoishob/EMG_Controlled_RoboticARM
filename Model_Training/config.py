@@ -45,6 +45,14 @@ class DataConfig:
     max_nan_fraction: float = 0.10
     trim_s: float = 0.0                          # drop this many seconds at both ends of every labelled run
     min_windows_per_class: int = 20              # classes with fewer windows are dropped (with a warning)
+    # ---- BioWave session folders (signals_*.csv + metadata_* + events_* + quality_*), see session_io.py
+    layout: str = "auto"                         # auto | sessions | files   (auto: session folders if any are found)
+    use_phases: List[str] = field(default_factory=lambda: ["perform", "rest"])   # 'prepare' (cue), 'paused', ... are never labels
+    perform_trim_s: List[float] = field(default_factory=lambda: [0.5, 0.25])     # drop reaction time / release at both ends
+    rest_trim_s: List[float] = field(default_factory=lambda: [1.0, 0.25])        # drop the relaxation after a gesture
+    rest_cap_ratio: Optional[float] = 2.0        # keep at most ratio x (mean gesture duration) of rest per session; None = all
+    min_valid_ratio: float = 0.90                # sessions with fewer valid (non-NaN, non-lost) samples are skipped
+    min_classes_per_session: int = 2
 
 
 @dataclass
@@ -55,6 +63,8 @@ class PreprocessConfig:
     bandpass_hz: Optional[List[float]] = field(default_factory=lambda: [20.0, 220.0])
     filter_order: int = 4
     notch_hz: Optional[float] = None             # 50 or 60 for mains hum; None = off
+    notch_harmonics: int = 1                     # 2 = also notch 2 x notch_hz (100 Hz) ...
+    notch_q: float = 30.0                        # lower Q = wider notch, shorter ringing (use ~8-10 on 200 ms windows)
     # Filtering is applied per window (zero-phase) so training and real-time inference share one code path.
 
 
@@ -102,6 +112,7 @@ class TrainConfig:
     epochs: int = 40
     batch_size: int = 128
     lr: float = 2e-3
+    optimizer: str = "adamw"                     # adam | adamw  (deep models; adamw = Adam + decoupled weight decay)
     weight_decay: float = 1e-4
     patience: int = 8
     dropout: float = 0.3

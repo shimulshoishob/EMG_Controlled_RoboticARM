@@ -41,6 +41,7 @@ class Recording:
     session: str
     runs: List[Tuple[int, int, str]]       # (start, stop, label) contiguous constant-label stretches
     channel_names: List[str] = field(default_factory=list)
+    meta: Dict[str, object] = field(default_factory=dict)
 
     @property
     def n_samples(self) -> int:
@@ -245,7 +246,14 @@ def load_recording(path: Path, cfg: DataConfig) -> Tuple[Optional[Recording], Op
 
 
 def load_dataset(cfg: DataConfig) -> Tuple[List[Recording], dict]:
-    """Load every supported file; returns (recordings, report)."""
+    """Load every supported file; returns (recordings, report).
+
+    ``cfg.layout`` = ``sessions`` (or ``auto`` when session folders are found) uses ``session_io`` for BioWave
+    session folders (signals/events/metadata/quality); otherwise every table file is one recording."""
+    if cfg.layout in ("auto", "sessions"):
+        from .session_io import find_sessions, load_sessions
+        if cfg.layout == "sessions" or find_sessions(cfg.paths, cfg.recursive)[0]:
+            return load_sessions(cfg)
     files = discover_files(cfg)
     report = {"files_found": len(files), "loaded": 0, "skipped": [], "paths": [str(resolve_path(p)) for p in cfg.paths]}
     recs: List[Recording] = []

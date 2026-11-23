@@ -40,3 +40,17 @@ def predict(bundle: dict, df: pd.DataFrame, return_proba: bool = False):
         return pipe.predict_proba(X)
     pred = np.asarray(pipe.predict(X)).astype(int)
     return bundle["label_encoder"].inverse_transform(pred)
+
+
+def load_gesture_classifier(path):
+    """Load an EMG ``.joblib`` bundle written by the application and return its ``GestureClassifier``.
+
+        clf = load_gesture_classifier("Model_Training/outputs/trained_models/SVMRBF_20261123_101500.joblib")
+        label, confidence = clf.predict_window(window)       # window: (clf.window_samples, n_channels) raw ADC counts
+        clf.classes, clf.fs, clf.window_samples, clf.stride_samples      # everything needed to stream
+    The full training metadata (settings, split, metrics, versions) is in ``bundle["metadata"]`` / the sidecar ``.json``.
+    """
+    bundle = load_bundle(path)
+    if bundle.get("format") != "emg_gesture_classifier":
+        raise ValueError("not an EMG gesture-classifier bundle (use load_bundle for tabular models)")
+    return bundle["classifier"]

@@ -59,15 +59,24 @@ class Job:
 
 @dataclass
 class RunPlan:
+    """Everything the engine needs, independent of the data kind (``tabular`` CSV or ``emg`` session folders)."""
     run_id: str
-    prepared: PreparedData
-    options: PreprocessOptions
+    kind: str                       # tabular | emg
+    task: str                       # classification | regression
+    target: str
+    options: dict                   # JSON-serialisable settings; stored with every exported model
+    seed: int
+    warnings: List[str]
+    n_train: int
+    n_test: int
     dirs: Dirs
     model_keys: List[str]
     dataset_info: dict
-    split_path: Path
+    split_path: Path                # tabular: split.joblib; emg: the work directory with the .npy arrays
     max_parallel: int
     cpu_budget: int
+    extra: dict = field(default_factory=dict)      # kind-specific worker payload
+    prepared: Optional[PreparedData] = None
 
 
 def new_run_id(dirs: Dirs) -> str:
@@ -97,7 +106,9 @@ def build_run(df: pd.DataFrame, target: str, feature_types: Dict[str, str], opti
     parallel = max(1, min(max_parallel or len(model_keys), len(model_keys)))
     info = {"name": dataset_name, "rows_used": int(len(prepared.X_train) + len(prepared.X_test)),
             "rows_original": int(len(df)), "columns_original": int(df.shape[1])}
-    return RunPlan(run_id, prepared, options, dirs, list(model_keys), info, split_path, parallel, cpus)
+    return RunPlan(run_id, "tabular", prepared.task, prepared.target, options.to_dict(), options.seed,
+                   list(prepared.warnings), len(prepared.X_train), len(prepared.X_test), dirs, list(model_keys), info,
+                   split_path, parallel, cpus, prepared=prepared)
 
 
 class TrainingEngine:
@@ -107,7 +118,7 @@ class TrainingEngine:
         self.queue = self.ctx.Queue()
         self.jobs: Dict[str, Job] = {}
         for k in plan.model_keys:
-            e = entry_for(k, plan.prepared.task)
+            e = entry_for(k, plan.task)
             self.jobs[k] = Job(k, e.label, e.family, e.file_stem)
         self._order = list(plan.model_keys)
         self._started = False
@@ -137,10 +148,11 @@ class TrainingEngine:
         p = self.plan
         self.t_start = time.time()
         self._started = True
-        self.log(f"Run {p.run_id}: task={p.prepared.task}, target='{p.prepared.target}', "
-                 f"{len(p.prepared.X_train)} train / {len(p.prepared.X_test)} test rows, "
+        unit = "windows" if p.kind == "emg" else "rows"
+        self.log(f"Run {p.run_id}: task={p.task}, target='{p.target}', "
+                 f"{p.n_train} train / {p.n_test} test {unit}, "
                  f"{len(self.jobs)} models, max {p.max_parallel} in parallel")
-        for w in p.prepared.warnings:
+        for w in p.warnings:
             self.log("WARNING " + w, logging.WARNING)
         self._launch_pending()
 
@@ -154,10 +166,10 @@ class TrainingEngine:
 
     def _payload(self, job: Job, n_jobs: int) -> dict:
         p = self.plan
-        return {"key": job.key, "label": job.label, "file_stem": job.file_stem, "task": p.prepared.task,
-                "run_id": p.run_id, "seed": p.options.seed, "options": p.options.to_dict(), "n_jobs": n_jobs,
+        return {"key": job.key, "label": job.label, "file_stem": job.file_stem, "task": p.task,
+                "run_id": p.run_id, "seed": p.seed, "options": p.options, "n_jobs": n_jobs,
                 "split_path": str(p.split_path), "trained_dir": str(p.dirs.trained_models),
-                "target": p.prepared.target, "dataset": p.dataset_info}
+                "target": p.target, "dataset": p.dataset_info, **p.extra}
 
     def _launch_pending(self) -> None:
         if self.cancelled:
@@ -171,7 +183,10 @@ class TrainingEngine:
             job = self.jobs[k]
             if job.state != PENDING or job.process is not None:
                 continue
-            from .worker import run_task
+            if p.kind == "emg":
+                from .emg import run_emg_task as run_task
+            else:
+                from .worker import run_task
             proc = self.ctx.Process(target=run_task, args=(self._payload(job, n_jobs), self.queue),
                                     name=f"train-{k}", daemon=False)
             job.process, job.t_start, job.state, job.message = proc, time.time(), TRAINING, "starting"
@@ -194,7 +209,7 @@ class TrainingEngine:
             self.t_end = time.time()
             n_ok = sum(j.state == COMPLETED for j in self.jobs.values())
             self.log(f"Run finished in {self.t_end - self.t_start:.1f}s: {n_ok}/{len(self.jobs)} models completed")
-            shutil.rmtree(self.plan.split_path.parent, ignore_errors=True)
+            shutil.rmtree(self.plan.split_path if self.plan.kind == "emg" else self.plan.split_path.parent, ignore_errors=True)
             self._logger.removeHandler(self._fh)
             self._fh.close()
 

@@ -54,7 +54,8 @@ class TorchModel(BaseModel):
         epochs = int(self.hp_epochs(val))
         bs = int(cfg.batch_size)
         steps = max(1, (n + bs - 1) // bs)
-        opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        opt_cls = torch.optim.Adam if str(getattr(cfg, "optimizer", "adamw")).lower() == "adam" else torch.optim.AdamW
+        opt = opt_cls(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
         sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=cfg.lr, total_steps=epochs * steps, pct_start=0.2)
         weight = None
         if cfg.class_weight:

@@ -9,6 +9,8 @@ Modes (``auto`` picks the strictest one the data allows):
 * ``subject``   - whole subjects held out (subject-independent evaluation)
 * ``session``   - whole sessions held out (session-independent evaluation)
 * ``recording`` - whole recordings held out, stratified by gesture
+* ``trial``     - within every recording and gesture the LATER repetitions are test (the ones before them validation, the earliest
+                  train): "calibrate on early repetitions, predict later ones" - the realistic protocol for a personal model
 * ``temporal``  - each labelled run is cut into disjoint, time-separated blocks that are assigned to
                   train / val / test (within-recording evaluation; the optimistic fallback for tiny datasets)
 """
@@ -26,7 +28,7 @@ from .data_io import Recording
 from .preprocessing import Segment
 from .utils import LOG
 
-MODES = ("subject", "session", "recording", "temporal")
+MODES = ("subject", "session", "recording", "trial", "temporal")
 TEMPORAL_BLOCKS = 10
 
 
@@ -131,6 +133,26 @@ def _recording_split(recs, units, cfg: SplitConfig):
     return out
 
 
+def _trial_split(recs, units, cfg: SplitConfig):
+    """Chronological repetition split inside every (recording, gesture)."""
+    by: Dict[Tuple[int, str], List[int]] = {}
+    for ui, u in enumerate(units):
+        by.setdefault((u.rec_idx, u.label), []).append(ui)
+    out = {"train": [], "val": [], "test": []}
+    for (ri, lab), uis in sorted(by.items()):
+        uis.sort(key=lambda i: units[i].start)
+        n = len(uis)
+        if n < 3:
+            LOG.warning("%s: gesture '%s' has only %d repetition(s) - used for training only", recs[ri].rec_id, lab, n)
+            n_val = n_test = 0
+        else:
+            n_val, n_test = _n_assign(n, cfg.val_size, cfg.test_size)
+        for rank, ui in enumerate(uis):
+            split = "test" if rank >= n - n_test else "val" if rank >= n - n_test - n_val else "train"
+            out[split].append(Piece(units[ui], ui, f"{ri}:{ui}"))
+    return out
+
+
 def _blocks(u: Segment, win: int, n_blocks: int, gap: int) -> List[Segment]:
     L = u.stop - u.start
     edges = np.linspace(u.start, u.stop, n_blocks + 1).astype(int)
@@ -177,12 +199,14 @@ def split_pieces(recs, cfg: SplitConfig, win: int):
         splits = _group_split(recs, units, mode, cfg)
     elif mode == "recording":
         splits = _recording_split(recs, units, cfg)
+    elif mode == "trial":
+        splits = _trial_split(recs, units, cfg)
     else:
         splits = _temporal_split(recs, units, cfg, win)
     verify_no_leakage(recs, splits, mode)
     info = {"mode": mode,
             "independent_of": {"subject": "subject", "session": "session (and recording)",
-                               "recording": "recording", "temporal": "nothing (same recordings, disjoint time blocks)"}[mode],
+                               "recording": "recording", "trial": "repetition (same people, later trials)", "temporal": "nothing (same recordings, disjoint time blocks)"}[mode],
             "groups": {k: sorted({recs[p.seg.rec_idx].subject if mode == "subject" else
                                   f"{recs[p.seg.rec_idx].subject}|{recs[p.seg.rec_idx].session}" if mode == "session" else
                                   recs[p.seg.rec_idx].rec_id for p in v}) for k, v in splits.items()},

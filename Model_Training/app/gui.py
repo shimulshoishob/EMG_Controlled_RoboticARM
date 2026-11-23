@@ -22,14 +22,16 @@ from PySide6.QtGui import QAction, QBrush, QColor, QDesktopServices, QFont, QPal
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
                                QFormLayout, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
                                QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton,
-                               QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget, QTreeWidget,
+                               QScrollArea, QSpinBox, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QTabWidget, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from . import engine as eng
+from .emg import SPLIT_MODES, EmgOptions, build_emg_run, to_config
+from ..data_io import load_dataset
 from .catalog import FAMILY_NAMES, list_models
 from .paths import Dirs
 from .preprocess import CATEGORICAL, IGNORE, NUMERIC, PreprocessOptions, analyze, detect_task, infer_types
-from .reports import (COLUMNS, PRIMARY, best_model, comparison_table, fig_confusion, fig_cost, fig_pred_vs_actual,
+from .reports import (_barh, _finish, COLUMNS, PRIMARY, best_model, comparison_table, fig_confusion, fig_cost, fig_pred_vs_actual,
                       fig_scores, set_chart_theme, write_reports)
 
 # ------------------------------------------------------------------------------------------ themes
@@ -161,6 +163,40 @@ class CSVLoader(QThread):
                 df = pd.read_csv(self.path, encoding="latin-1", low_memory=False)
             df.columns = [str(c) for c in df.columns]
             self.loaded.emit(df, self.path)
+        except Exception as exc:                                 # noqa: BLE001
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
+class SessionLoader(QThread):
+    """Loads every session folder in the background (~15-20 s for 34 sessions)."""
+    loaded = Signal(object, object)
+    failed = Signal(str)
+
+    def __init__(self, opts: EmgOptions):
+        super().__init__()
+        self.opts = opts
+
+    def run(self):
+        try:
+            recs, report = load_dataset(to_config(self.opts).data)
+            self.loaded.emit(recs, report)
+        except Exception as exc:                                 # noqa: BLE001
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
+class RunBuilder(QThread):
+    """Runs ``fn(progress_callback)`` (split + windowing + feature extraction) off the GUI thread."""
+    done = Signal(object)
+    failed = Signal(str)
+    progress = Signal(str)
+
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+
+    def run(self):
+        try:
+            self.done.emit(self.fn(self.progress.emit))
         except Exception as exc:                                 # noqa: BLE001
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
@@ -412,6 +448,173 @@ class DataTab(QWidget):
         return detect_task(self.df[self.target()]) if self.df is not None else "classification"
 
 
+class SessionsPanel(QWidget):
+    """Data tab for BioWave session folders: analysis of every session found under a folder."""
+    loaded = Signal()
+    COLS = ["Session", "Subject", "Hand", "Day", "Duration (s)", "Valid %", "Packet loss %", "Poor ch.", "Classes",
+            "Usable (s)", "Status", "Note"]
+
+    def __init__(self):
+        super().__init__()
+        self.recs: list = []
+        self.report: dict = {}
+        self.paths: List[str] = []
+        self._loader: Optional[SessionLoader] = None
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(10)
+
+        top = QHBoxLayout()
+        self.btn_open = QPushButton("Open dataset folder…"); self.btn_open.setObjectName("primary")
+        self.btn_open.clicked.connect(self.choose_folder)
+        self.btn_reload = QPushButton("Reload"); self.btn_reload.setEnabled(False)
+        self.btn_reload.clicked.connect(lambda: self.load(self.paths))
+        self.path_lbl = QLabel("Choose a folder that contains session folders (signals_*.csv + metadata + events + quality), or one session.")
+        self.path_lbl.setObjectName("muted"); self.path_lbl.setWordWrap(True)
+        top.addWidget(self.btn_open); top.addWidget(self.btn_reload); top.addWidget(self.path_lbl, 1)
+        root.addLayout(top)
+
+        g = QGroupBox("What is taken from each session (applied while loading)")
+        h = QHBoxLayout(g)
+        def dspin(v, hi=3.0, step=0.05):
+            w = QDoubleSpinBox(); w.setRange(0.0, hi); w.setSingleStep(step); w.setDecimals(2); w.setValue(v); w.setSuffix(" s")
+            w.valueChanged.connect(self._dirty); return w
+        self.p0, self.p1, self.r0, self.r1 = dspin(0.5), dspin(0.25), dspin(1.0), dspin(0.25)
+        self.cap = QDoubleSpinBox(); self.cap.setRange(0.0, 10.0); self.cap.setSingleStep(0.5); self.cap.setValue(2.0)
+        self.cap.setSpecialValueText("keep all"); self.cap.setPrefix("≤ "); self.cap.setSuffix(" × a gesture"); self.cap.valueChanged.connect(self._dirty)
+        self.minvalid = QSpinBox(); self.minvalid.setRange(50, 100); self.minvalid.setValue(90); self.minvalid.setSuffix(" %")
+        self.minvalid.valueChanged.connect(self._dirty)
+        for lab, w in (("Perform: trim start / end", None), ("", self.p0), ("", self.p1), ("Rest: trim start / end", None),
+                       ("", self.r0), ("", self.r1), ("Rest amount", self.cap), ("Min. valid samples", self.minvalid)):
+            if w is None:
+                l = QLabel(lab); l.setObjectName("muted"); h.addWidget(l)
+            else:
+                h.addWidget(w)
+        h.addStretch(1)
+        self.dirty_lbl = QLabel(""); self.dirty_lbl.setStyleSheet("font-weight:600;")
+        h.addWidget(self.dirty_lbl)
+        root.addWidget(g)
+
+        cards = QHBoxLayout()
+        self.cards = {k: StatCard(k) for k in ("Sessions loaded", "Skipped folders", "Subjects", "Left / right", "Usable minutes", "Classes")}
+        for c in self.cards.values():
+            cards.addWidget(c)
+        root.addLayout(cards)
+
+        self.inner = QTabWidget()
+        self.table = make_table(self.COLS)
+        self.table.setSortingEnabled(False)
+        self.balance_chart = ChartPane()
+        self.skipped = make_table(["Folder", "Why it is not used"], stretch_last=True)
+        self.inner.addTab(self.table, "Sessions")
+        self.inner.addTab(self.balance_chart, "Class balance (usable seconds)")
+        self.inner.addTab(self.skipped, "Skipped folders")
+        root.addWidget(self.inner, 1)
+
+    # ---- loading
+    def options(self) -> dict:
+        return {"perform_trim_s": [self.p0.value(), self.p1.value()], "rest_trim_s": [self.r0.value(), self.r1.value()],
+                "rest_cap_ratio": (self.cap.value() or None), "min_valid_ratio": self.minvalid.value() / 100.0}
+
+    def _dirty(self):
+        if self.recs:
+            self.dirty_lbl.setText("changed - press Reload")
+            self.dirty_lbl.setStyleSheet(f"font-weight:600; color:{T('warn')};")
+
+    def choose_folder(self):
+        qs = QSettings("ModelTrainingStudio", "Studio")
+        guess = qs.value("emg_dir", "") or str(Path.home() / "Documents" / "CAPSTONE" / "BioWaveEMG_ArmBand" / "dataset")
+        d = QFileDialog.getExistingDirectory(self, "Dataset folder (contains session folders)", guess if Path(guess).exists() else str(Path.home()))
+        if d:
+            qs.setValue("emg_dir", d)
+            self.load([d])
+
+    def load(self, paths: List[str]):
+        self.paths = list(paths)
+        self.btn_open.setEnabled(False); self.btn_reload.setEnabled(False)
+        self.path_lbl.setText(f"Loading sessions from {', '.join(Path(p).name for p in paths)} …  (reads every signals CSV, ~0.5 s each)")
+        self.dirty_lbl.setText("")
+        self._loader = SessionLoader(EmgOptions(paths=self.paths, **self.options()))
+        self._loader.loaded.connect(self._loaded)
+        self._loader.failed.connect(self._failed)
+        self._loader.start()
+
+    def _failed(self, msg: str):
+        self.btn_open.setEnabled(True); self.btn_reload.setEnabled(bool(self.paths))
+        self.path_lbl.setText("Could not load the dataset.")
+        QMessageBox.critical(self, "Could not load sessions", msg)
+
+    def _loaded(self, recs, report):
+        self.btn_open.setEnabled(True); self.btn_reload.setEnabled(True)
+        self.recs, self.report = recs, report
+        if not recs:
+            self.path_lbl.setText("No usable session folder found.")
+            self.render()
+            QMessageBox.warning(self, "No usable sessions", "No session folder with a signals_*.csv, valid samples and at least two gestures was found.")
+            return
+        self.render()
+        self.loaded.emit()
+
+    # ---- display
+    def render(self):
+        rep, recs = self.report, self.recs
+        sess = rep.get("sessions", [])
+        ok = [s for s in sess if s.get("status") == "loaded"]
+        subjects = sorted({r.subject for r in recs})
+        hands = [str(s.get("hand", "")) for s in ok]
+        secs: Dict[str, float] = {}
+        for s in ok:
+            for k, v in (s.get("seconds_per_class") or {}).items():
+                secs[k] = secs.get(k, 0.0) + v
+        self.path_lbl.setText(f"{', '.join(self.paths)}  -  {len(recs)} usable session(s) loaded")
+        self.cards["Sessions loaded"].set(len(recs))
+        self.cards["Skipped folders"].set(len(rep.get("skipped", [])))
+        self.cards["Subjects"].set(len(subjects))
+        self.cards["Left / right"].set(f"{hands.count('left')} / {hands.count('right')}")
+        self.cards["Usable minutes"].set(f"{sum(secs.values()) / 60:.0f}")
+        self.cards["Classes"].set(len(secs))
+
+        order = sorted(sess, key=lambda s: (s.get("status") != "loaded", str(s.get("subject", "~")), s.get("session", "")))
+        t = self.table
+        t.setRowCount(len(order))
+        for r, s in enumerate(order):
+            good = s.get("status") == "loaded"
+            col = None if good else T("danger")
+            vals = [s.get("session", ""), s.get("subject", ""), s.get("hand", ""), s.get("day", ""),
+                    s.get("duration_s", ""), s.get("valid_pct", ""),
+                    "" if s.get("packet_loss_pct") is None else f"{s['packet_loss_pct']:.3f}",
+                    s.get("poor_channels", ""), s.get("classes", ""), s.get("usable_s", ""),
+                    "loaded" if good else "skipped", s.get("reason", "")]
+            for c, v in enumerate(vals):
+                num = c in (4, 5, 6, 8, 9)
+                it = cell(v, (Qt.AlignRight if num else Qt.AlignLeft) | Qt.AlignVCenter, col if c in (10, 11) else (T("muted") if not good else None),
+                          bold=(c == 0 and good))
+                if c == 5 and good and isinstance(v, (int, float)) and v < 97:
+                    it.setForeground(QBrush(QColor(T("warn"))))
+                t.setItem(r, c, it)
+        t.resizeColumnsToContents()
+        t.setColumnWidth(0, 280)
+        t.horizontalHeader().setStretchLastSection(True)
+
+        sk = rep.get("skipped", [])
+        self.skipped.setRowCount(len(sk))
+        for r, s in enumerate(sk):
+            self.skipped.setItem(r, 0, cell(s.get("file", "")))
+            self.skipped.setItem(r, 1, cell(s.get("reason", "")))
+        self.skipped.resizeColumnToContents(0)
+
+        fig = self.balance_chart.fig
+        if secs:
+            fig.clear()
+            ax = fig.subplots(1, 1)
+            names = sorted(secs, key=lambda k: -secs[k])
+            _barh(ax, names, [secs[k] for k in names], -1, "Usable seconds per class (all sessions)", "{:.0f}")
+            _finish(fig)
+            self.balance_chart.canvas.draw_idle()
+        else:
+            self.balance_chart.clear("no data")
+
+
 class ConfigTab(QWidget):
     task_changed = Signal()
 
@@ -423,7 +626,10 @@ class ConfigTab(QWidget):
         root.setSpacing(14)
 
         left = QVBoxLayout()
+        self.mode = "tabular"
+        self._reset_default = True
         g = QGroupBox("Task and split")
+        self.g_task = g
         f = QFormLayout(g)
         self.task = QComboBox()
         self.task.addItems(["auto", "classification", "regression"])
@@ -436,6 +642,7 @@ class ConfigTab(QWidget):
         left.addWidget(g)
 
         g = QGroupBox("Preprocessing (fitted on training rows only)")
+        self.g_pre = g
         f = QFormLayout(g)
         self.dups = QCheckBox("Remove duplicate rows (before the split)"); self.dups.setChecked(True)
         self.const = QCheckBox("Remove constant features"); self.const.setChecked(True)
@@ -466,9 +673,15 @@ class ConfigTab(QWidget):
         hint.setObjectName("muted"); hint.setWordWrap(True)
         f.addRow(hint)
         left.addWidget(g)
+        self.g_exec = g
+        self._build_emg_groups(left)
+        left.removeWidget(self.g_exec); left.addWidget(self.g_exec)       # EMG settings first, shared execution box last
         left.addStretch(1)
-        lw = QWidget(); lw.setLayout(left); lw.setMaximumWidth(430)
-        root.addWidget(lw)
+        lw = QWidget(); lw.setLayout(left)
+        sc = QScrollArea(); sc.setWidgetResizable(True); sc.setWidget(lw); sc.setFrameShape(QFrame.NoFrame)
+        sc.setMaximumWidth(520); sc.setMinimumWidth(500); sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        sc.setStyleSheet("QScrollArea { background: transparent; } QScrollArea > QWidget > QWidget { background: transparent; }")
+        root.addWidget(sc)
 
         right = QVBoxLayout()
         g = QGroupBox("Models (discovered in models/registry.py)")
@@ -488,16 +701,95 @@ class ConfigTab(QWidget):
         root.addWidget(rw, 1)
         self.refresh_models()
 
+    def _build_emg_groups(self, left: QVBoxLayout):
+        def dsp(v, lo, hi, step, dec=0, suf=""):
+            w = QDoubleSpinBox(); w.setRange(lo, hi); w.setSingleStep(step); w.setDecimals(dec); w.setValue(v)
+            if suf: w.setSuffix(suf)
+            return w
+        g = QGroupBox("EMG windows and filtering"); self.g_emg_win = g
+        f = QFormLayout(g)
+        self.e_win = dsp(200, 50, 1000, 10, 0, " ms"); self.e_stride = dsp(100, 10, 500, 10, 0, " ms")
+        self.e_lo = dsp(20, 0, 120, 5, 0, " Hz"); self.e_hi = dsp(220, 60, 245, 5, 0, " Hz")
+        self.e_notch = QComboBox(); self.e_notch.addItems(["off", "50 Hz", "60 Hz"])
+        f.addRow("Window length", self.e_win); f.addRow("Training stride", self.e_stride)
+        f.addRow("Band-pass low / high", self.e_lo); f.addRow("", self.e_hi); f.addRow("Mains notch", self.e_notch)
+        n = QLabel("Applied identically to every window in training and in the real-time classifier. The notch is off by default: "
+                   "on this data it did not improve accuracy.")
+        n.setObjectName("muted"); n.setWordWrap(True); f.addRow(n)
+        left.addWidget(g)
+
+        g = QGroupBox("Evaluation protocol (what the test set represents)"); self.g_emg_split = g
+        f = QFormLayout(g)
+        self.e_split = QComboBox()
+        for k, v in SPLIT_MODES.items():
+            self.e_split.addItem(v, k)
+        self.e_split.setCurrentIndex(list(SPLIT_MODES).index("trial"))
+        self.e_test = QSpinBox(); self.e_test.setRange(10, 40); self.e_test.setValue(20); self.e_test.setSuffix(" %")
+        self.e_seed = QSpinBox(); self.e_seed.setRange(0, 999999); self.e_seed.setValue(42)
+        f.addRow("Test = ", self.e_split); f.addRow("Test share", self.e_test); f.addRow("Random seed", self.e_seed)
+        n = QLabel("Splitting always happens on whole trials / people BEFORE windowing, so overlapping windows never leak. "
+                   "New people = how it works for a stranger (hard). Same people, later repetitions = a personal model "
+                   "calibrated on the user's own early trials.")
+        n.setObjectName("muted"); n.setWordWrap(True); f.addRow(n)
+        left.addWidget(g)
+
+        g = QGroupBox("Deep-model training"); self.g_emg_train = g
+        f = QFormLayout(g)
+        self.e_opt = QComboBox(); self.e_opt.addItems(["adam", "adamw"])
+        self.e_lr = dsp(0.002, 0.00001, 0.1, 0.0005, 5); self.e_bs = QSpinBox(); self.e_bs.setRange(8, 4096); self.e_bs.setValue(128)
+        self.e_pat = QSpinBox(); self.e_pat.setRange(1, 100); self.e_pat.setValue(8)
+        self.e_cap = QSpinBox(); self.e_cap.setRange(30, 36000); self.e_cap.setValue(600); self.e_cap.setSuffix(" s")
+        self.e_cw = QCheckBox("Balance class weights"); self.e_cw.setChecked(True)
+        f.addRow("Optimizer", self.e_opt); f.addRow("Learning rate", self.e_lr); f.addRow("Batch size", self.e_bs)
+        f.addRow("Early-stop patience", self.e_pat); f.addRow("Time cap per model", self.e_cap); f.addRow(self.e_cw)
+        left.addWidget(g)
+
+        g = QGroupBox("Real-time evaluation"); self.g_emg_rt = g
+        f = QFormLayout(g)
+        self.e_k = QSpinBox(); self.e_k.setRange(1, 25); self.e_k.setValue(5)
+        self.e_bench = QCheckBox("Benchmark per-window latency (CPU, 1 thread)"); self.e_bench.setChecked(True)
+        self.e_budget = dsp(50, 5, 1000, 5, 0, " ms")
+        f.addRow("Smoothing (last k windows)", self.e_k); f.addRow("Decision interval", self.e_budget); f.addRow(self.e_bench)
+        n = QLabel("Smoothed F1 simulates the live loop: the decision is the argmax of the mean probability of the last k windows. "
+                   "Latency is measured while other models train, so it is a pessimistic upper bound.")
+        n.setObjectName("muted"); n.setWordWrap(True); f.addRow(n)
+        left.addWidget(g)
+        for g in (self.g_emg_win, self.g_emg_split, self.g_emg_train, self.g_emg_rt):
+            g.setVisible(False)
+
+    def set_mode(self, mode: str):
+        self.mode = mode
+        emg = mode == "emg"
+        for g in (self.g_task, self.g_pre):
+            g.setVisible(not emg)
+        for g in (self.g_emg_win, self.g_emg_split, self.g_emg_train, self.g_emg_rt):
+            g.setVisible(emg)
+        self._reset_default = True
+        self.refresh_models()
+
+    def emg_options(self) -> EmgOptions:
+        notch = {"off": None, "50 Hz": 50.0, "60 Hz": 60.0}[self.e_notch.currentText()]
+        return EmgOptions(window_ms=self.e_win.value(), stride_ms=self.e_stride.value(), bandpass_lo=self.e_lo.value(),
+                          bandpass_hi=self.e_hi.value(), notch_hz=notch, notch_harmonics=2 if notch else 1,
+                          split_mode=self.e_split.currentData(), test_size=self.e_test.value() / 100.0,
+                          seed=self.e_seed.value(), optimizer=self.e_opt.currentText(), epochs=self.epochs.value(),
+                          batch_size=self.e_bs.value(), lr=self.e_lr.value(), patience=self.e_pat.value(),
+                          class_weight=self.e_cw.isChecked(), max_train_seconds=float(self.e_cap.value()),
+                          smoothing_k=self.e_k.value(), benchmark=self.e_bench.isChecked(), budget_ms=self.e_budget.value())
+
     def set_detected(self, task: str):
         self._detected = task
 
     def effective_task(self) -> str:
+        if self.mode == "emg":
+            return "classification"
         t = self.task.currentText()
         return self._detected if t == "auto" else t
 
     def refresh_models(self):
         keep = set(self.selected_keys())
-        first = not self.tree.topLevelItemCount()
+        first = not self.tree.topLevelItemCount() or self._reset_default
+        self._reset_default = False
         self.tree.clear()
         task = self.effective_task()
         groups: Dict[str, QTreeWidgetItem] = {}
@@ -529,6 +821,9 @@ class ConfigTab(QWidget):
         extra = ""
         if task == "regression":
             extra = "Regression uses the regressor version of each classical model; deep/hybrid networks and LDA are classification-only. "
+        elif self.mode == "emg":
+            extra = ("Classical models use engineered time/frequency features; deep and hybrid models use the filtered raw windows "
+                     "(PyTorch, Adam). All are trained in parallel as separate processes. ")
         else:
             extra = "Deep and hybrid models treat each row as a 1-channel sequence and need PyTorch. "
         self.note.setText(extra + (f"{n_unavail} model(s) unavailable - hover the row for the reason." if n_unavail else ""))
@@ -719,7 +1014,7 @@ class ResultsTab(QWidget):
 
     def show_results(self, e: eng.TrainingEngine, paths: Dict[str, str]):
         self.last = (e, paths)
-        self.results, self.task = e.results(), e.plan.prepared.task
+        self.results, self.task = e.results(), e.plan.task
         self.paths = {"models": str(e.plan.dirs.trained_models), "reports": paths.get("report", paths.get("reports", "")),
                       "plots": paths.get("plots", ""), "log": str(e.log_path)}
         for b in self._targets:
@@ -752,8 +1047,8 @@ class ResultsTab(QWidget):
                 if name_ == "Family":
                     v = FAMILY_NAMES.get(v, v)
                 txt = fmt(float(v), 4) if isinstance(v, (float,)) else str(v)
-                if name_ in ("Train time (s)",):
-                    txt = f"{v:.2f}"
+                if name_ in ("Train time (s)",) or "(ms)" in name_:
+                    txt = "n/a" if v != v else f"{v:.2f}"
                 if name_ == "Size (KB)":
                     txt = f"{v:.0f}"
                 it = cell(txt, Qt.AlignLeft | Qt.AlignVCenter if c < 3 and name_ in ("Model", "Family") else Qt.AlignRight | Qt.AlignVCenter,
@@ -817,8 +1112,24 @@ class MainWindow(QMainWindow):
         lay.addLayout(head)
 
         self.tabs = QTabWidget()
-        self.data = DataTab(self.dirs); self.config = ConfigTab(); self.train = TrainTab(); self.results = ResultsTab()
-        self.tabs.addTab(self.data, "1  Data")
+        self.data = DataTab(self.dirs); self.sessions = SessionsPanel()
+        self.config = ConfigTab(); self.train = TrainTab(); self.results = ResultsTab()
+        page = QWidget()
+        pl = QVBoxLayout(page); pl.setContentsMargins(18, 10, 18, 0); pl.setSpacing(0)
+        srow = QHBoxLayout()
+        srow.addWidget(QLabel("Data source"))
+        self.source_box = QComboBox()
+        self.source_box.addItem("Tabular CSV file", "tabular")
+        self.source_box.addItem("EMG session folders (BioWave)", "emg")
+        self.source_box.setMinimumWidth(260)
+        srow.addWidget(self.source_box); srow.addStretch(1)
+        pl.addLayout(srow)
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.data); self.stack.addWidget(self.sessions)
+        pl.addWidget(self.stack, 1)
+        self.source = "tabular"
+        self.source_box.currentIndexChanged.connect(self._source_changed)
+        self.tabs.addTab(page, "1  Data")
         self.tabs.addTab(self.config, "2  Configure")
         self.tabs.addTab(self.train, "3  Train")
         self.tabs.addTab(self.results, "4  Results")
@@ -826,6 +1137,8 @@ class MainWindow(QMainWindow):
 
         self.data.target_changed.connect(self._task_update)
         self.data.dataset_loaded.connect(lambda: self.tabs.setCurrentIndex(0))
+        self.sessions.loaded.connect(lambda: self.statusBar().showMessage(
+            f"{len(self.sessions.recs)} sessions loaded - choose models and the evaluation protocol on the Configure tab."))
         self.config.task_changed.connect(self.config.refresh_models)
         self.train.start_clicked.connect(self.start_training)
         self.train.cancel_clicked.connect(self.cancel_all)
@@ -836,6 +1149,12 @@ class MainWindow(QMainWindow):
         self.theme_box.setCurrentText(saved)
         self.theme_box.currentTextChanged.connect(self.set_theme)
 
+    def _source_changed(self, _=None):
+        self.source = self.source_box.currentData()
+        self.stack.setCurrentIndex(0 if self.source == "tabular" else 1)
+        self.config.set_mode(self.source)
+        self.statusBar().showMessage("Open a CSV file to begin." if self.source == "tabular" else "Open a dataset folder to begin.")
+
     def set_theme(self, name: str):
         """Re-skin everything: palette + stylesheet, then rebuild the widgets that carry per-cell colours."""
         if name not in THEMES:
@@ -844,6 +1163,8 @@ class MainWindow(QMainWindow):
         QSettings("ModelTrainingStudio", "Studio").setValue("theme", name)
         if self.data.df is not None:
             self.data._fill_columns(self.data.target())
+        if self.sessions.report:
+            self.sessions.render()
         self.config.refresh_models()
         if self.engine is not None:
             self.train.refresh(self.engine)
@@ -862,8 +1183,11 @@ class MainWindow(QMainWindow):
     def start_training(self):
         if self.engine is not None and not self.engine.finished:
             return
-        if self.data.df is None:
-            QMessageBox.information(self, "No dataset", "Open a CSV file on the Data tab first.")
+        if getattr(self, "_builder", None) is not None and self._builder.isRunning():
+            return
+        emg = self.source == "emg"
+        if (not emg and self.data.df is None) or (emg and not self.sessions.recs):
+            QMessageBox.information(self, "No dataset", "Open a dataset on the Data tab first.")
             self.tabs.setCurrentIndex(0)
             return
         keys = self.config.selected_keys()
@@ -871,16 +1195,40 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No models selected", "Select at least one model on the Configure tab.")
             self.tabs.setCurrentIndex(1)
             return
+        if emg:
+            opts = self.config.emg_options()
+            opts.paths = list(self.sessions.paths)
+            for k, v in self.sessions.options().items():
+                setattr(opts, k, v)
+            par = self.config.parallel.value()
+            recs, report = self.sessions.recs, self.sessions.report
+            self.train.btn_start.setEnabled(False)
+            self.tabs.setCurrentIndex(2)
+            self.train.summary.setText("Preparing data …")
+            self._builder = RunBuilder(lambda prog: build_emg_run(recs, report, opts, keys, self.dirs, par, progress=prog))
+            self._builder.progress.connect(lambda m: (self.train.summary.setText("Preparing: " + m), self.statusBar().showMessage("Preparing: " + m)))
+            self._builder.done.connect(self._begin)
+            self._builder.failed.connect(self._prepare_failed)
+            self._builder.start()
+            return
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             plan = eng.build_run(self.data.df, self.data.target(), self.data.feature_types(), self.config.options(),
                                  keys, self.dirs, self.config.parallel.value(), Path(self.data.path).name)
-            self.engine = eng.TrainingEngine(plan)
         except Exception as exc:                                  # noqa: BLE001
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "Cannot start training", f"{exc}")
             return
         QApplication.restoreOverrideCursor()
+        self._begin(plan)
+
+    def _prepare_failed(self, msg: str):
+        self.train.btn_start.setEnabled(True)
+        self.train.summary.setText("Could not prepare the data.")
+        QMessageBox.critical(self, "Cannot start training", msg)
+
+    def _begin(self, plan):
+        self.engine = eng.TrainingEngine(plan)
         self.train.reset(self.engine.jobs)
         self.train.btn_start.setEnabled(False)
         self.train.btn_cancel.setEnabled(True)
@@ -889,7 +1237,7 @@ class MainWindow(QMainWindow):
         self.engine.start()
         self.train.refresh(self.engine)
         self.timer.start()
-        self.statusBar().showMessage(f"Training {len(keys)} models…")
+        self.statusBar().showMessage(f"Training {len(plan.model_keys)} models…")
 
     def cancel_all(self):
         if self.engine and not self.engine.finished:
