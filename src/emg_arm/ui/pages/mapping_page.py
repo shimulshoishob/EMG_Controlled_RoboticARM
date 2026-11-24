@@ -20,6 +20,7 @@ from ..widgets import Banner, Card, button, label
 
 class MappingPage(QWidget):
     mapping_saved = pyqtSignal()
+    disarm_requested = pyqtSignal()
 
     def __init__(self, store: MappingStore, config: dict, parent=None):
         super().__init__(parent)
@@ -365,19 +366,32 @@ class MappingPage(QWidget):
     def _update_buttons(self):
         dirty = self._dirty()
         can_edit = not self.armed
-        self.save_btn.setEnabled(dirty and can_edit and not getattr(self, "_has_errors", False))
+        self.save_btn.setEnabled(dirty and not getattr(self, "_has_errors", False))
         self.revert_btn.setEnabled(dirty)
         for b in (self.reset_btn, self.import_btn):
-            b.setEnabled(can_edit)
+            b.setEnabled(True)
         if self.armed:
-            self.save_note.setText("Disarm the arm to save changes (mappings never change while the arm can move).")
+            self.save_note.setText("The arm is armed: it will be disarmed automatically when you save, reset or import "
+                                   "(mappings never change while the arm can move).")
         elif dirty:
             self.save_note.setText("Unsaved changes.")
         elif not self.save_note.text().startswith("Saved") and not self.store.load_warning:
             self.save_note.setText("")
 
     # ================================================================ actions
+    def _ensure_disarmed(self) -> bool:
+        """Mappings must not change while the arm can move: stop motion first."""
+        if not self.armed:
+            return True
+        self.disarm_requested.emit()
+        if self.armed:      # main window clears this synchronously via set_armed(False)
+            QMessageBox.warning(self, "Arm still armed", "Disarm the arm first, then try again.")
+            return False
+        return True
+
     def _save(self):
+        if not self._ensure_disarmed():
+            return
         try:
             self.store.set_all(self.work)
         except MappingError as exc:
@@ -398,6 +412,8 @@ class MappingPage(QWidget):
         self._load_editor()
 
     def _reset(self):
+        if not self._ensure_disarmed():
+            return
         if QMessageBox.question(self, "Reset to defaults", "Replace all ten gesture mappings with the defaults?") != QMessageBox.Yes:
             return
         self.store.reset_defaults()
@@ -419,7 +435,7 @@ class MappingPage(QWidget):
 
     def _import(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import gesture mapping", str(Path.home()), "JSON (*.json)")
-        if not path:
+        if not path or not self._ensure_disarmed():
             return
         try:
             self.store.import_from(Path(path))

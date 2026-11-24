@@ -1,0 +1,133 @@
+02:47:43 | INFO    | experiment folder: D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\results\smoke_all
+02:47:45 | INFO    | dataset: 100 recordings, 5 subject(s), 10 class(es): ['closed_fist', 'double_fist', 'down', 'left', 'pinch', 'rest', 'right', 'thumbs_up', 'up', 'victory']
+02:47:45 | INFO    | split mode (auto): subject
+02:47:52 | INFO    | split 'subject': windows {'train': 5820, 'val': 1940, 'test': 1940} (feature dim 204)
+02:47:52 | INFO    | device: cpu | models: ['rf', 'extra_trees', 'xgboost', 'lightgbm', 'catboost', 'svm_rbf', 'svm_linear', 'knn', 'logreg', 'lda', 'gradient_boosting', 'mlp', 'cnn1d', 'cnn2d', 'lstm', 'bilstm', 'gru', 'transformer', 'cnn_lstm', 'cnn_gru', 'cnn_bilstm', 'cnn_tcn', 'cnn_attention', 'cnn_transformer', 'cnn_rf']
+02:47:52 | INFO    | [1/25] Random Forest (ml, input: features)
+02:47:59 | INFO    |   trained in 6.9s (peak +15 MB)
+02:48:01 | INFO    |   test: acc 0.486  bal.acc 0.486  macro-F1 0.462
+02:48:05 | INFO    |   CPU latency: median 11.72 ms, P95 29.39 ms (marginal), size 3224 KB
+02:48:06 | INFO    | [2/25] Extra Trees (ml, input: features)
+02:48:08 | INFO    |   trained in 1.6s (peak +31 MB)
+02:48:08 | INFO    |   test: acc 0.466  bal.acc 0.466  macro-F1 0.443
+02:48:13 | INFO    |   CPU latency: median 9.98 ms, P95 23.53 ms (marginal), size 4171 KB
+02:48:15 | INFO    | [3/25] XGBoost (ml, input: features)
+02:49:14 | INFO    |   trained in 59.2s (peak +95 MB)
+02:49:15 | INFO    |   test: acc 0.473  bal.acc 0.473  macro-F1 0.467
+02:49:18 | INFO    |   CPU latency: median 9.98 ms, P95 14.56 ms (marginal), size 642 KB
+02:49:19 | INFO    | [4/25] LightGBM (ml, input: features)
+02:49:29 | INFO    |   trained in 10.4s (peak +23 MB)
+02:49:30 | INFO    |   test: acc 0.440  bal.acc 0.440  macro-F1 0.432
+02:49:32 | INFO    |   CPU latency: median 5.43 ms, P95 7.53 ms (comfortable), size 361 KB
+02:49:34 | INFO    | [5/25] CatBoost (ml, input: features)
+02:51:00 | INFO    |   trained in 86.1s (peak +25 MB)
+02:51:00 | INFO    |   test: acc 0.396  bal.acc 0.396  macro-F1 0.372
+02:51:03 | INFO    |   CPU latency: median 6.11 ms, P95 9.53 ms (comfortable), size 392 KB
+02:51:04 | INFO    | [6/25] SVM (RBF) (ml, input: features)
+02:51:09 | INFO    |   trained in 4.1s (peak +20 MB)
+02:51:15 | INFO    |   test: acc 0.261  bal.acc 0.261  macro-F1 0.239
+02:51:18 | INFO    |   CPU latency: median 4.83 ms, P95 6.63 ms (comfortable), size 3861 KB
+02:51:18 | INFO    | [7/25] SVM (linear) (ml, input: features)
+02:51:20 | INFO    |   trained in 1.9s (peak +10 MB)
+02:51:22 | INFO    |   test: acc 0.251  bal.acc 0.251  macro-F1 0.217
+02:51:24 | INFO    |   CPU latency: median 4.15 ms, P95 6.01 ms (comfortable), size 2156 KB
+02:51:25 | INFO    | [8/25] k-NN (ml, input: features)
+02:51:25 | INFO    |   trained in 0.0s (peak +0 MB)
+02:51:26 | INFO    |   test: acc 0.329  bal.acc 0.329  macro-F1 0.307
+02:51:30 | INFO    |   CPU latency: median 12.04 ms, P95 17.07 ms (marginal), size 3964 KB
+02:51:30 | INFO    | [9/25] Logistic Regression (ml, input: features)
+02:51:34 | INFO    |   trained in 3.6s (peak +8 MB)
+02:51:34 | INFO    |   test: acc 0.218  bal.acc 0.218  macro-F1 0.194
+02:51:35 | INFO    |   CPU latency: median 1.74 ms, P95 2.93 ms (comfortable), size 8 KB
+02:51:36 | INFO    | [10/25] LDA (ml, input: features)
+02:51:36 | INFO    |   trained in 0.1s (peak +2 MB)
+02:51:36 | INFO    |   test: acc 0.258  bal.acc 0.258  macro-F1 0.240
+02:51:37 | INFO    |   CPU latency: median 1.96 ms, P95 3.06 ms (comfortable), size 319 KB
+02:51:37 | INFO    | [11/25] Gradient Boosting (ml, input: features)
+02:51:47 | INFO    |   trained in 9.4s (peak +1 MB)
+02:51:47 | INFO    |   test: acc 0.432  bal.acc 0.432  macro-F1 0.397
+02:51:48 | INFO    |   CPU latency: median 2.88 ms, P95 4.72 ms (comfortable), size 162 KB
+02:51:49 | INFO    | [12/25] MLP (ml, input: features)
+02:51:56 | INFO    |   trained in 6.8s (peak +5 MB)
+02:51:56 | INFO    |   test: acc 0.271  bal.acc 0.271  macro-F1 0.240
+02:51:57 | INFO    |   CPU latency: median 2.02 ms, P95 3.30 ms (comfortable), size 384 KB
+02:51:57 | INFO    | [13/25] 1D CNN (dl, input: raw)
+02:52:06 | INFO    |     cnn1d            epoch   1/8  train_loss 2.2715  val_loss 2.1147  val_f1 0.199
+02:52:18 | INFO    |     cnn1d            epoch   5/8  train_loss 1.2597  val_loss 2.1152  val_f1 0.277
+02:52:27 | INFO    |     cnn1d            epoch   8/8  train_loss 1.1358  val_loss 1.9346  val_f1 0.316
+02:52:27 | INFO    |     cnn1d            early stop at epoch 8 (best val macro-F1 0.315)
+02:52:27 | INFO    |   trained in 29.7s (peak +204 MB)
+02:52:28 | INFO    |   test: acc 0.358  bal.acc 0.358  macro-F1 0.347
+02:52:29 | INFO    |   CPU latency: median 2.61 ms, P95 5.72 ms (comfortable), size 139 KB
+02:52:30 | INFO    | [14/25] 2D CNN (dl, input: raw)
+02:52:39 | INFO    |     cnn2d            epoch   1/8  train_loss 2.2532  val_loss 2.0959  val_f1 0.154
+02:53:22 | INFO    |     cnn2d            epoch   5/8  train_loss 1.3080  val_loss 1.4607  val_f1 0.495
+02:54:05 | INFO    |     cnn2d            epoch   8/8  train_loss 1.1950  val_loss 1.4767  val_f1 0.488
+02:54:05 | INFO    |   trained in 95.7s (peak +85 MB)
+02:54:11 | INFO    |   test: acc 0.470  bal.acc 0.470  macro-F1 0.457
+02:54:16 | INFO    |   CPU latency: median 14.77 ms, P95 29.80 ms (marginal), size 110 KB
+02:54:18 | INFO    | [15/25] LSTM (dl, input: raw)
+02:54:27 | INFO    |     lstm             epoch   1/8  train_loss 2.3047  val_loss 2.3015  val_f1 0.025
+02:54:40 | INFO    |     lstm             epoch   5/8  train_loss 2.0140  val_loss 2.0161  val_f1 0.123
+02:54:45 | INFO    |     lstm             early stop at epoch 7 (best val macro-F1 0.199)
+02:54:45 | INFO    |   trained in 26.8s (peak +19 MB)
+02:54:46 | INFO    |   test: acc 0.228  bal.acc 0.228  macro-F1 0.140
+02:54:46 | INFO    |   CPU latency: median 2.01 ms, P95 3.14 ms (comfortable), size 79 KB
+02:54:47 | INFO    | [16/25] BiLSTM (dl, input: raw)
+02:54:51 | INFO    |     bilstm           epoch   1/8  train_loss 2.3035  val_loss 2.2976  val_f1 0.096
+02:55:11 | INFO    |     bilstm           epoch   5/8  train_loss 1.8833  val_loss 1.9800  val_f1 0.215
+02:55:19 | INFO    |     bilstm           early stop at epoch 7 (best val macro-F1 0.235)
+02:55:19 | INFO    |   trained in 32.6s (peak +29 MB)
+02:55:21 | INFO    |   test: acc 0.209  bal.acc 0.209  macro-F1 0.143
+02:55:22 | INFO    |   CPU latency: median 2.13 ms, P95 3.62 ms (comfortable), size 157 KB
+02:55:22 | INFO    | [17/25] GRU (dl, input: raw)
+02:55:27 | INFO    |     gru              epoch   1/8  train_loss 2.3068  val_loss 2.2962  val_f1 0.071
+02:55:51 | INFO    |     gru              epoch   5/8  train_loss 1.8090  val_loss 2.0020  val_f1 0.207
+02:55:59 | INFO    |     gru              early stop at epoch 7 (best val macro-F1 0.256)
+02:55:59 | INFO    |   trained in 36.7s (peak +36 MB)
+02:56:00 | INFO    |   test: acc 0.250  bal.acc 0.250  macro-F1 0.187
+02:56:01 | INFO    |   CPU latency: median 3.34 ms, P95 4.49 ms (comfortable), size 61 KB
+02:56:02 | INFO    | [18/25] Transformer (dl, input: raw)
+02:56:08 | INFO    |     transformer      epoch   1/8  train_loss 2.2866  val_loss 2.2193  val_f1 0.222
+02:56:51 | INFO    |     transformer      epoch   5/8  train_loss 1.0729  val_loss 2.3272  val_f1 0.337
+02:57:14 | INFO    |     transformer      early stop at epoch 7 (best val macro-F1 0.350)
+02:57:14 | INFO    |   trained in 72.7s (peak +33 MB)
+02:57:16 | INFO    |   test: acc 0.359  bal.acc 0.359  macro-F1 0.351
+02:57:19 | INFO    |   CPU latency: median 5.74 ms, P95 8.59 ms (comfortable), size 289 KB
+02:57:20 | INFO    | [19/25] CNN-LSTM (hybrid, input: raw)
+02:57:25 | INFO    |     cnn_lstm         epoch   1/8  train_loss 2.2882  val_loss 2.2203  val_f1 0.077
+02:57:40 | INFO    |     cnn_lstm         epoch   5/8  train_loss 1.3588  val_loss 1.8904  val_f1 0.345
+02:57:44 | INFO    |     cnn_lstm         early stop at epoch 7 (best val macro-F1 0.400)
+02:57:44 | INFO    |   trained in 24.1s (peak +26 MB)
+02:57:45 | INFO    |   test: acc 0.372  bal.acc 0.372  macro-F1 0.361
+02:57:46 | INFO    |   CPU latency: median 4.35 ms, P95 6.65 ms (comfortable), size 132 KB
+02:57:47 | INFO    | [20/25] CNN-GRU (hybrid, input: raw)
+02:57:50 | INFO    |     cnn_gru          epoch   1/8  train_loss 2.2583  val_loss 2.1914  val_f1 0.111
+02:57:59 | INFO    |     cnn_gru          epoch   5/8  train_loss 1.3656  val_loss 1.7030  val_f1 0.382
+02:58:08 | INFO    |     cnn_gru          epoch   8/8  train_loss 1.2429  val_loss 1.6766  val_f1 0.398
+02:58:08 | INFO    |   trained in 21.6s (peak +29 MB)
+02:58:10 | INFO    |   test: acc 0.380  bal.acc 0.380  macro-F1 0.379
+02:58:11 | INFO    |   CPU latency: median 6.80 ms, P95 9.17 ms (comfortable), size 108 KB
+02:58:11 | INFO    | [21/25] CNN-BiLSTM (hybrid, input: raw)
+02:58:14 | INFO    |     cnn_bilstm       epoch   1/8  train_loss 2.2655  val_loss 2.1727  val_f1 0.143
+02:58:27 | INFO    |     cnn_bilstm       epoch   5/8  train_loss 1.3001  val_loss 1.8935  val_f1 0.365
+02:58:32 | INFO    |     cnn_bilstm       early stop at epoch 7 (best val macro-F1 0.401)
+02:58:32 | INFO    |   trained in 20.6s (peak +51 MB)
+02:58:33 | INFO    |   test: acc 0.335  bal.acc 0.335  macro-F1 0.310
+02:58:33 | INFO    |   CPU latency: median 2.04 ms, P95 3.23 ms (comfortable), size 233 KB
+02:58:34 | INFO    | [22/25] CNN-TCN (hybrid, input: raw)
+02:58:39 | INFO    |     cnn_tcn          epoch   1/8  train_loss 2.7817  val_loss 2.1960  val_f1 0.163
+02:58:51 | INFO    |     cnn_tcn          epoch   5/8  train_loss 1.4364  val_loss 1.8426  val_f1 0.336
+02:59:07 | INFO    |     cnn_tcn          epoch   8/8  train_loss 1.3051  val_loss 1.7898  val_f1 0.355
+02:59:07 | INFO    |   trained in 32.6s (peak +66 MB)
+02:59:08 | INFO    |   test: acc 0.377  bal.acc 0.377  macro-F1 0.362
+02:59:09 | INFO    |   CPU latency: median 5.51 ms, P95 7.64 ms (comfortable), size 117 KB
+02:59:09 | INFO    | [23/25] CNN-Attention (hybrid, input: raw)
+02:59:12 | INFO    |     cnn_attention    epoch   1/8  train_loss 2.2795  val_loss 2.1188  val_f1 0.277
+02:59:22 | INFO    |     cnn_attention    epoch   5/8  train_loss 1.4198  val_loss 1.7760  val_f1 0.259
+02:59:37 | INFO    |     cnn_attention    epoch   8/8  train_loss 1.3396  val_loss 1.7398  val_f1 0.294
+02:59:37 | INFO    |   trained in 27.6s (peak +31 MB)
+02:59:39 | INFO    |   test: acc 0.362  bal.acc 0.362  macro-F1 0.344
+02:59:41 | INFO    |   CPU latency: median 7.52 ms, P95 19.92 ms (marginal), size 51 KB
+02:59:43 | INFO    | [24/25] CNN-Transformer (hybrid, input: raw)
+02:59:52 | INFO    |     cnn_transformer  epoch   1/8  train_loss 2.2643  val_loss 1.9783  val_f1 0.268

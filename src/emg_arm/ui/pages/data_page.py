@@ -31,7 +31,6 @@ def open_folder(path: Path):
 
 
 class DataPage(QWidget):
-    record_toggled = pyqtSignal(str)          # label ("" if none); emitted on start and stop
     theme_changed = pyqtSignal(str)
     tuning_changed = pyqtSignal(dict)         # {key: value} in the units of TUNING_FIELDS (lookahead in ms)
     calibration_saved = pyqtSignal()
@@ -65,21 +64,6 @@ class DataPage(QWidget):
         self.config_note = label("", "caption", wrap=True)
         f.add(self.config_note)
         root.addWidget(f)
-
-        # ---------------------------------------------------------------- recording
-        c1 = Card("Record raw signals", "Saves every EMG sample (8 channels, 500 Hz) and the IMU angles to a CSV "
-                  "file, ready for your analysis. The armband must be connected.")
-        row = QHBoxLayout()
-        self.label_edit = QLineEdit()
-        self.label_edit.setPlaceholderText("optional label, e.g. S02_fist_trial3")
-        row.addWidget(self.label_edit, 1)
-        self.record_btn = button("Start recording", "primary", slot=self._toggle)
-        row.addWidget(self.record_btn)
-        c1.add(row)
-        self.record_status = Banner("Not recording.", "none")
-        c1.add(self.record_status)
-        c1.add(button("Open recordings folder", slot=lambda: open_folder(RECORDINGS_DIR)))
-        root.addWidget(c1)
 
         # -------------------------------------------------------------- calibration
         cal = Card("Calibration: servo range and rest position",
@@ -226,20 +210,3 @@ class DataPage(QWidget):
         self.load_calibration()
         self.cal_note.set("Shipped limits restored. Reconnect the arm to apply.", "good")
         self.calibration_saved.emit()
-
-    # ------------------------------------------------------------------ recording
-    def _toggle(self):
-        self.record_toggled.emit("" if self.recording else self.label_edit.text().strip().replace(" ", "_"))
-
-    def set_recording(self, recording: bool, path: str = "", frames: int = 0):
-        self.recording = recording
-        self.record_btn.setText("Stop recording" if recording else "Start recording")
-        from .. import theme
-        theme.set_role(self.record_btn, "danger" if recording else "primary")
-        self.label_edit.setEnabled(not recording)
-        if recording:
-            self.record_status.set(f"Recording → {path}   ({frames:,} samples)", "bad")
-        elif path:
-            self.record_status.set(f"Saved {frames:,} samples to {path}", "good")
-        else:
-            self.record_status.set("Not recording.", "none")
