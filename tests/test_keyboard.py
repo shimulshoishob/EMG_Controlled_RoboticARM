@@ -100,6 +100,7 @@ class KeyboardControlTests(unittest.TestCase):
 
     def arm(self):
         self.w.toggle_arm()                                  # simulated arm (no xArm plugged in)
+        pump(0.4)                                            # it homes by itself after connecting
         self.w.arm.homed = True
         self.w.toggle_armed()
         self.assertTrue(self.w.is_armed())

@@ -35,6 +35,8 @@ class LoadedModel:
     stride_samples: int
     n_features: int
     summary: str = ""
+    train_windows: dict = None          # {class: number of training windows}, from the sidecar .json when present
+    test_accuracy: float = None
 
 
 class ModelError(RuntimeError):
@@ -56,12 +58,29 @@ def _read_failure(exc: Exception) -> ModelError:
     return ModelError(f"Could not read the model file: {exc}")
 
 
+# Decisions are taken at least this often (50 ms at 500 Hz) whatever stride the model was trained with: a model
+# trained with a 100 ms stride can still be asked every 50 ms, which halves the delay before the arm reacts.
+MAX_STRIDE_SAMPLES = 25
+
+
+def _sidecar_info(path):
+    """Training window counts and test accuracy from ``<model>.json`` next to the model (both optional)."""
+    import json
+    try:
+        info = json.loads(Path(path).with_suffix(".json").read_text(encoding="utf-8"))
+        windows = info["dataset"]["class_windows"]["train"]
+        accuracy = info.get("metrics", {}).get("accuracy")
+        return {str(k): int(v) for k, v in windows.items()}, (float(accuracy) if accuracy is not None else None)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None, None
+
+
 def _load_gesture_bundle(artifact) -> LoadedModel:
     """A bundle written by Model_Training: the classifier does filtering, features and scaling itself."""
     clf = artifact["classifier"]
     return LoadedModel(
         path="", model=clf, class_names=[str(c) for c in clf.classes], input_channels=int(clf.n_channels),
-        window_samples=int(clf.window_samples), stride_samples=int(clf.stride_samples),
+        window_samples=int(clf.window_samples), stride_samples=min(int(clf.stride_samples), MAX_STRIDE_SAMPLES),
         n_features=int(artifact.get("metadata", {}).get("n_features", 0) or 0))
 
 
@@ -76,6 +95,7 @@ def load_model(path) -> LoadedModel:
     if isinstance(artifact, dict) and artifact.get("format") == "emg_gesture_classifier":
         loaded = _load_gesture_bundle(artifact)
         loaded.path = str(path)
+        loaded.train_windows, loaded.test_accuracy = _sidecar_info(path)
         return loaded
     if isinstance(artifact, dict) and "pipeline" in artifact:
         raise ModelError("This is a table-data model (one row per sample, no EMG windows), so it cannot drive the "
@@ -90,16 +110,6 @@ def load_model(path) -> LoadedModel:
         path=str(path), model=model, class_names=[str(c) for c in artifact["class_names"]],
         input_channels=int(channels), window_samples=int(artifact.get("window_samples", 100)),
         stride_samples=int(artifact.get("stride_samples", 25)), n_features=n_features)
-
-
-def find_models(*roots) -> List[Path]:
-    """All ``*.joblib`` models below the given folders, newest first."""
-    found = []
-    for root in roots:
-        root = Path(root)
-        if root.is_dir():
-            found += [p for p in root.rglob("*.joblib") if p.is_file()]
-    return sorted(set(found), key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 class InferenceWorker(QThread):

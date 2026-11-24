@@ -18,6 +18,10 @@ class ControlPage(QWidget):
     pad_released = pyqtSignal(str)
     grip_pressed = pyqtSignal()
 
+    def _toggle_advanced_keys(self, shown: bool):
+        self.drive.setVisible(shown)
+        self.adv_keys_btn.setText("Hide advanced keyboard controls" if shown else "Show advanced keyboard controls")
+
     def set_pad_enabled(self, enabled: bool):
         self.drive.set_pad_enabled(enabled)
 
@@ -119,5 +123,11 @@ class ControlPage(QWidget):
         self.pad_buttons = self.drive.pad_buttons
         self.grip_btn = self.drive.grip_btn
         self.key_label = self.drive.key_label
+        # Advanced: the button/key table is tucked away. The keys keep working while it is hidden.
+        self.adv_keys_btn = button("Show advanced keyboard controls", "ghost")
+        self.adv_keys_btn.setCheckable(True)
+        self.adv_keys_btn.toggled.connect(self._toggle_advanced_keys)
+        self.drive.setVisible(False)
+        root.addWidget(self.adv_keys_btn)
         root.addWidget(self.drive)
         root.addStretch(1)

@@ -1,19 +1,23 @@
+# Installed automatically into ./.venv on the first run (see src/emg_arm/bootstrap.py): you never need to run
+# pip yourself. Versions are pinned to the set this project was tested with. scikit-learn must stay close to
+# the version the models in Model_Training/outputs were saved with (1.9.x).
+
 # Desktop app (macOS, Windows, Linux)
-numpy
-pyqt5
-pyqtgraph
-pyserial
-psutil              # lists network adapters so Wi-Fi discovery uses the right broadcast address
-joblib
-scikit-learn>=1.9   # the models were trained with 1.9.x
-PyWavelets
+numpy==2.5.4
+PyQt5==5.15.11
+pyqtgraph==0.14.0
+pyserial==3.5
+psutil==7.2.2           # lists network adapters so Wi-Fi discovery uses the right broadcast address
+joblib==1.6.0
+scikit-learn==1.9.1
+scipy==1.18.1           # filtering inside the trained gesture models
+PyWavelets==1.10.0
+
+# Libraries some trained models need to load (a model made with XGBoost / LightGBM / CatBoost fails without them)
+xgboost==3.4.1
+lightgbm==4.7.0
+catboost==1.2.10
 
 # Robotic arm (Hiwonder xArm 1S over USB)
 xarm==0.0.4
-hidapi              # provides the `hid` module xarm uses. Do NOT install the package named "hid".
-
-# Extra libraries some Model_Training models need (XGBoost / LightGBM / CatBoost bundles fail to load without them)
-scipy
-xgboost
-lightgbm
-catboost
+hidapi==0.15.0          # provides the `hid` module xarm uses. Do NOT install the package named "hid".

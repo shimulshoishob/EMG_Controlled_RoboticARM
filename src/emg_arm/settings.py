@@ -20,6 +20,7 @@ DEFAULTS = {
     "usb_port": "",
     "theme": "auto",               # auto | light | dark
     "last_model": "",
+    "model_files": [],             # .joblib files the user uploaded to the model list
     "wifi_ssid": "",
     "setup_done": False,
     "control_mode": "hybrid",      # hybrid | gestures | keyboard

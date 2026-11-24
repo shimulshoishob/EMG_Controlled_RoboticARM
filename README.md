@@ -4,7 +4,7 @@ Research application: control a Hiwonder **xArm 1S** with gestures from the **Bi
 (8-channel EMG @ 500 Hz + BNO080 IMU, firmware `EMG_IMU_WIFI_SETUP_V2`, protocol BWIM v2). Runs on **macOS and Windows** (Linux too), light and dark theme.
 
 ```
-Armband ──Wi-Fi (UDP) or USB──▶ laptop: Random Forest ─▶ vote filter ─▶ motion thread ─▶ safety layer ─▶ USB ─▶ xArm 1S
+Armband ──Wi-Fi (UDP) or USB──▶ laptop: gesture model ─▶ vote filter ─▶ motion thread ─▶ safety layer ─▶ USB ─▶ xArm 1S
 ```
 
 ## Start
@@ -18,9 +18,9 @@ The first run creates `.venv` and installs `requirements.txt` (a few minutes, ne
 
 | Group | Section | What it is for |
 |---|---|---|
-| Robotic arm | **Arm control** (opens first) | One page: connect the xArm 1S (or simulate it) and *Go home* · *ARM* · control mode (keys + gestures / gestures only / keyboard only), speed, global confidence · live servo positions · one table with every movement's on-screen button and its keyboard shortcuts (click a key to re-assign it) |
+| Robotic arm | **Arm control** (opens first) | One page: connect the xArm 1S (or simulate it): it **goes home by itself** after connecting, and one gripper button opens or closes it · *ARM* · control mode (keys + gestures / gestures only / keyboard only), speed, global confidence · live servo positions · the table of on-screen buttons and keyboard shortcuts is tucked under **Show advanced keyboard controls** (the keys work either way; click a key there to re-assign it) |
 | EMG & model | **Gesture model** | Pick the trained `.joblib`; shows how each model class is recognised as one of the ten gestures |
-| EMG & model | **Armband** | Connect the real armband over Wi-Fi or USB (four cards, *Connection setup*, live signal) |
+| EMG & model | **Armband** | Connect the real armband over Wi-Fi or USB (four cards, *Connection setup*; the live signal is hidden until you press *Show live signal*) |
 | EMG & model | **Live monitor** | 8-channel EMG, model output, confidence, stable gesture, transition history |
 | EMG & model | **Gesture mapping** | What each of the ten gestures does (see below) |
 | Settings | **Settings & data** | Theme, export/import configuration, raw-signal recording, servo calibration (range, rest pose), advanced motion smoothing (hidden until you ask) |
@@ -105,10 +105,43 @@ Includes a software copy of the firmware (`tests/fake_armband.py`, test-only: th
 | Connected, no data | allow Python in the firewall (Windows: Private networks; macOS: Firewall options) |
 | USB port busy | close the Arduino Serial Monitor |
 | Port not listed | use the armband's USB port; try another cable (some are charge-only) |
+| *SIMULATION ONLY* in the banner | **Simulate the arm** was ticked. Disconnect, untick it, connect again (it is unticked automatically when the xArm is plugged in at start-up) |
+| `open failed` when connecting the arm | arm switched off, USB cable is power-only, or another program has the arm open |
+| Arm never moves with EMG (the right gesture shows) | confidence is below *Min. confidence*; look at the % in "Model output". If correct gestures sit at 50-60 %, lower it a little or retrain |
+| Arm moves when you are relaxed | raise *Min. confidence*, re-record Rest, retrain, keep the electrodes where they were when you recorded |
+| "Same gesture too long - relax" | stuck-gesture lockout after 6 s; relax briefly |
+| Motion still a bit jerky on the real arm | raise *Lookahead* (Settings & data → advanced motion smoothing) to 160-200 ms; check with `tools/check_arm.py --glide 6` |
+| "Model needs catboost/xgboost/lightgbm" | delete the `.venv` folder and start again, or `pip install` the named library into `.venv` |
 
-## Hardware safety (unchanged)
+## Hardware safety checklist
 
-Power the arm from its own supply; keep its reach clear; wear the armband on Wi-Fi, or run the laptop on battery when using USB; one program controls the arm; know the stop: Space/Esc, then the power switch (support the arm by hand). The arm never loses torque in software, on exit it parks at home.
+1. **Power the arm from its own 7.5 V adapter or charged battery.** USB is only for data.
+2. **Keep the arm's reach clear.** Stable table, nothing and no hands within about 40 cm. The person wearing the armband sits **outside** that reach.
+3. **Electrical safety for the person wearing the electrodes.** Use the **Wi-Fi** connection, or if you use USB, run the laptop **on battery (charger unplugged)**.
+4. **Only one program may control the arm.** Close any other script that uses it (it may move the arm home as soon as it starts).
+5. **Know your physical stop.** Space/Esc first. The arm's power switch cuts everything, but the arm then falls: support it with one hand.
+6. **Before closing the app, put down anything the gripper holds.** On exit the arm parks at home and opens the gripper.
+7. **Don't leave the gripper squeezing an object for long.** A blocked servo heats up; if needed lower `gripper.close` in `config/arm_config.json`.
+
+The arm never loses torque in software (no `servoOff()`): on stop, disarm, disconnect or exit it holds its pose. Voltage is checked every 10 s; below 6.6 V motion stops.
+
+## Bring-up, one stage at a time (do not skip stages)
+
+**Stage 1 - no arm, no armband.** Open **Arm control**, tick **Simulate the arm**, *Connect arm* (the simulated arm homes by itself), switch the control mode to *Keyboard only*, press **ARM** and drive the simulated arm with the keys or the on-screen buttons. Practise Space/Esc.
+
+**Stage 2 - real armband, simulated arm.** On **Gesture model** pick a model trained on the person who wears the armband. On **Armband** connect over Wi-Fi (or USB). Keep **Simulate** ticked and ARM. Do each gesture and check on **Arm control** (Live) / **Live monitor** that the right action appears and that Rest reliably shows HOLD. Raise *Min. confidence* if you see false moves. Models trained on someone else are much weaker.
+
+**Stage 3 - real arm, keyboard only.** Plug in the arm and switch it on, then run the read-only check:
+
+```bash
+python3 tools/check_arm.py            # prints voltage + positions, does not move
+python3 tools/check_arm.py --nudge 6  # base moves +30 units and back (asks first); also 5 = shoulder, 4 = elbow
+python3 tools/check_arm.py --glide 6  # smooth streamed sweep +80 and back: should look like one continuous motion
+```
+
+Use the nudges to confirm which way "+" goes; if Left/Right or Up/Down are reversed, flip the sign in `config/arm_config.json` (`gestures.*.direction` or `vertical_joints.*.up_direction`). Then untick **Simulate**, *Connect arm* (it moves slowly to home by itself, so stand clear), mode *Keyboard only*, ARM, and drive each joint to both ends of its range at speed 50. If a limit would let the arm hit the table or itself, tighten it in `config/arm_config.json` and restart.
+
+**Stage 4 - armband and real arm.** Mode *Keys + gestures* (or *Gestures only*), speed 50-100, ARM, small movements first, a finger near the Space bar.
 
 ## More documentation
 

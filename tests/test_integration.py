@@ -56,6 +56,7 @@ class IntegrationBase(unittest.TestCase):
         if mode != "keyboard":                       # otherwise arming opens a modal "gestures not available" question
             w.link_state, w.model_loaded = LinkState.STREAMING, True
         w.toggle_arm()
+        pump(0.4)                                    # the arm homes by itself after connecting
         w.arm.homed = True
         w.toggle_armed()
         assert w.is_armed()
@@ -70,6 +71,39 @@ class NavigationTests(IntegrationBase):
             w.go_to(key)
             pump(0.05)
             self.assertTrue(w.stack.currentWidget().isVisible(), key)
+
+
+class ModelListTests(IntegrationBase):
+    """Gesture model page: upload several files, clear them, no folder scanning."""
+
+    def test_upload_several_files_then_clear_keeps_the_files(self):
+        w = self.make_window()
+        page = w.pages["model"]
+        files = []
+        for name in ("a", "b", "c"):
+            f = self.dir / f"{name}.joblib"
+            f.write_bytes(b"x")
+            files.append(str(f))
+        page.add_files(files + [files[0]])                      # a duplicate is ignored
+        self.assertEqual(page.list.count(), 3)
+        self.assertEqual(w.settings.get("model_files"), files)
+        page._clear()
+        self.assertEqual(page.list.count(), 0)
+        self.assertEqual(w.settings.get("model_files"), [])
+        self.assertEqual(w.settings.get("last_model"), "")
+        self.assertTrue(all(Path(f).exists() for f in files), "clearing must never delete files")
+
+    def test_no_rescan_button_and_missing_files_are_hidden(self):
+        from PyQt5.QtWidgets import QPushButton
+        w = self.make_window()
+        page = w.pages["model"]
+        texts = [b.text() for b in page.findChildren(QPushButton)]
+        self.assertIn("Upload .joblib files…", texts)
+        self.assertIn("Clear uploaded files", texts)
+        self.assertFalse(any("Rescan" in t or "Browse" in t for t in texts))
+        w.settings.set("model_files", [str(self.dir / "gone.joblib")])
+        page.refresh()
+        self.assertEqual(page.list.count(), 0)
 
 
 class MappingUiTests(IntegrationBase):

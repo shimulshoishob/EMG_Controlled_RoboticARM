@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (QFileDialog, QHBoxLayout, QHeaderView, QListWidget, QListWidgetItem, QTableWidget,
                              QTableWidgetItem, QVBoxLayout, QWidget, QAbstractItemView)
 
-from ...ml.inference import LoadedModel, find_models
+from ...ml.inference import LoadedModel
 from ...paths import MODELS_DIR, PROJECT_ROOT
 from ...control.commands import CommandGenerator
 from ...control.gestures import BY_ID
@@ -36,8 +36,9 @@ class ModelPage(QWidget):
         self.list.itemDoubleClicked.connect(lambda _i: self._use_selected())
         c1.add(self.list)
         row = QHBoxLayout()
-        row.addWidget(button("Browse for a .joblib file…", slot=self._browse))
-        row.addWidget(button("Rescan folders", "ghost", slot=self.refresh))
+        row.addWidget(button("Upload .joblib files…", slot=self._upload))
+        row.addWidget(button("Clear uploaded files", "ghost",
+                             "Empties this list. The files themselves stay on your computer.", slot=self._clear))
         row.addStretch(1)
         c1.add(row)
         self.status = Banner("No model loaded yet.", "none")
@@ -47,11 +48,12 @@ class ModelPage(QWidget):
 
         c2 = Card("What each gesture does", "Class names come from the model and are matched to the ten study gestures; "
                   "what each gesture does is set under Gesture mapping.")
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Class in the model", "Recognised as", "Robot action"])
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Class in the model", "Recognised as", "Training windows", "Robot action"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.table.verticalHeader().hide()
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.NoSelection)
@@ -61,25 +63,50 @@ class ModelPage(QWidget):
         root.addStretch(1)
         self.refresh()
 
-    def refresh(self):
+    def refresh(self, select: str = ""):
+        """Show the uploaded models."""
         self.list.clear()
-        roots = [MODELS_DIR, PROJECT_ROOT / "Model_Training" / "outputs" / "trained_models",
-                 PROJECT_ROOT.parent / "BioWaveEMG_ArmBand" / "trained_model"]
-        last = self.settings.get("last_model")
-        paths = find_models(*roots)
-        if last and Path(last).exists() and Path(last) not in paths:
-            paths.insert(0, Path(last))
-        for p in paths[:200]:
-            if p.parent.name == "trained_models":
-                item = QListWidgetItem(f"{p.stem}\ntrained_models/{p.name}")
-            else:
-                item = QListWidgetItem(f"{p.parent.name}\n{p.parent.parent.name}/{p.name}")
+        paths = [p for p in (self.settings.get("model_files") or []) if Path(p).is_file()]
+        wanted = select or self.settings.get("last_model")
+        for path in paths:
+            p = Path(path)
+            item = QListWidgetItem(f"{p.stem}\n{p.parent}")
             item.setData(Qt.UserRole, str(p))
+            item.setToolTip(str(p))
             self.list.addItem(item)
-            if last and str(p) == last:
+            if wanted and str(p) == wanted:
                 self.list.setCurrentItem(item)
         if not paths:
-            self.status.set("No models found in the “models” folder. Use Browse to pick a rf_realtime_model.joblib.", "warn")
+            self.status.set("No models yet. Click “Upload .joblib files…” and pick one or more trained models.", "none")
+
+    def _upload(self):
+        trained = PROJECT_ROOT / "Model_Training" / "outputs" / "trained_models"
+        start = str(next((d for d in (trained, MODELS_DIR, PROJECT_ROOT) if d.exists()), PROJECT_ROOT))
+        paths, _ = QFileDialog.getOpenFileNames(self, "Upload trained models", start, "Joblib model (*.joblib)")
+        if not paths:
+            return
+        self.add_files(paths)
+
+    def add_files(self, paths):
+        """Add .joblib files to the list (duplicates ignored) and select the first one added."""
+        files = list(self.settings.get("model_files") or [])
+        added = []
+        for p in map(str, paths):
+            if p.lower().endswith(".joblib") and p not in files and p not in added:
+                added.append(p)
+        self.settings.set("model_files", files + added)
+        self.refresh(select=(added or [str(Path(p)) for p in paths])[0])
+        count = len(added)
+        self.status.set(f"Added {count} model{'s' if count != 1 else ''}. Select one and press “Use selected model”."
+                        if count else "Those files are already in the list.", "none")
+
+    def _clear(self):
+        """Empty the list (never deletes files) and forget the last model so the next start is clean."""
+        self.settings.set("model_files", [])
+        self.settings.set("last_model", "")
+        self.refresh()
+        if self.table.rowCount():
+            self.status.set("Uploaded files cleared from the list. The loaded model stays active until you load another.", "none")
 
     def _use_selected(self):
         item = self.list.currentItem()
@@ -88,28 +115,33 @@ class ModelPage(QWidget):
             return
         self.model_requested.emit(item.data(Qt.UserRole))
 
-    def _browse(self):
-        start = str(MODELS_DIR) if MODELS_DIR.exists() else str(PROJECT_ROOT)
-        path, _ = QFileDialog.getOpenFileName(self, "Load Random Forest model", start, "Joblib model (*.joblib)")
-        if path:
-            self.model_requested.emit(path)
-
     def show_loaded(self, loaded: LoadedModel, mapping: dict, problems: list):
         name = Path(loaded.path).stem if Path(loaded.path).parent.name == "trained_models" else Path(loaded.path).parent.name
         tone = "warn" if problems else "good"
         text = (f"Loaded “{name}”  ·  {len(loaded.class_names)} gestures  ·  {loaded.input_channels} input channels  ·  "
                 f"{loaded.window_samples}-sample window")
+        if loaded.test_accuracy is not None:
+            text += f"  ·  test accuracy {loaded.test_accuracy * 100:.0f} %"
         if problems:
             text += "\n" + "\n".join(problems)
         self.status.set(text, tone)
         self.card_pick.set_done(True)
+        files = list(self.settings.get("model_files") or [])
+        if loaded.path not in files:                       # a model loaded any other way still appears in the list
+            self.settings.set("model_files", files + [loaded.path])
+            self.refresh(select=loaded.path)
         self.table.setRowCount(len(loaded.class_names))
         for r, cls in enumerate(loaded.class_names):
             self.table.setItem(r, 0, QTableWidgetItem(cls))
             gid = mapping.get(cls)
             m = self.store.get(gid)
             self.table.setItem(r, 1, QTableWidgetItem(BY_ID[gid].name if gid else "not recognised"))
-            self.table.setItem(r, 2, QTableWidgetItem(
+            n = (loaded.train_windows or {}).get(cls)
+            item = QTableWidgetItem("-" if n is None else str(n))
+            if n is not None and n < 50:                       # very few examples: this gesture will be unreliable
+                item.setToolTip("Few training examples - record more of this gesture and retrain.")
+            self.table.setItem(r, 2, item)
+            self.table.setItem(r, 3, QTableWidgetItem(
                 CommandGenerator.describe(m, self.servo_names) if m else "Ignored (not mapped)"))
         self.table.resizeRowsToContents()
         for i in range(self.list.count()):

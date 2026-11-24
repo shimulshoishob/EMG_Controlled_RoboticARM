@@ -93,6 +93,7 @@ class WindowSmokeTests(unittest.TestCase):
         w = self.window
         w.pages["control"].mode.setCurrentIndex(w.pages["control"].mode.findData("keyboard"))   # otherwise arming asks a modal question
         w.toggle_arm()
+        pump(0.4)                                          # the arm homes by itself after connecting
         w.arm.homed = True
         w.toggle_armed()
         self.assertTrue(w.teleop.armed)
@@ -104,6 +105,7 @@ class WindowSmokeTests(unittest.TestCase):
         cp = w.pages["control"]
         cp.mode.setCurrentIndex(cp.mode.findData("keyboard"))
         w.toggle_arm()
+        pump(0.4)                                          # the arm homes by itself after connecting
         w.arm.homed = True
         w.toggle_armed()
         self.assertTrue(cp.pad_buttons["left"].isEnabled())
@@ -116,6 +118,26 @@ class WindowSmokeTests(unittest.TestCase):
         self.assertIn("LEFT", cp.action_label.text() + "LEFT")   # label updates while held
         w.emergency_stop("test")
         self.assertFalse(cp.pad_buttons["left"].isEnabled())
+
+    def test_connecting_homes_the_arm_by_itself_and_one_button_toggles_the_gripper(self):
+        w = self.window
+        rp = w.pages["arm"]
+        self.assertFalse(rp.grip_btn.isEnabled(), "nothing to do before the arm is connected")
+        w.toggle_arm()                                    # simulated arm; it starts with the gripper OPEN
+        pump(0.5)
+        self.assertTrue(w.arm.homed, "connecting must send the arm home without another click")
+        self.assertTrue(w.can_arm())
+        self.assertIn("Ready", rp.banner.text.text())
+        self.assertTrue(rp.grip_btn.isEnabled())
+        self.assertEqual(rp.grip_btn.text(), "Close gripper")       # open now, so the button offers to close
+        rp.grip_btn.click()
+        pump(0.1)
+        self.assertTrue(w.arm.gripper_closed)
+        self.assertEqual(rp.grip_btn.text(), "Open gripper")        # closed now, so it offers to open
+        rp.grip_btn.click()
+        pump(0.1)
+        self.assertFalse(w.arm.gripper_closed)
+        self.assertEqual(rp.grip_btn.text(), "Close gripper")
 
     def test_navigation_has_no_removed_pages_and_opens_on_arm_control(self):
         keys = [p[0] for p in PAGES]
@@ -134,6 +156,34 @@ class WindowSmokeTests(unittest.TestCase):
     def test_connection_page_offers_only_real_hardware(self):
         page = self.window.pages["armband"]
         self.assertEqual(set(page.mode_pages), {"wifi", "usb"})
+
+    def test_key_table_is_hidden_under_advanced_keyboard_until_asked(self):
+        cp = self.window.pages["control"]
+        self.window.go_to("control")
+        pump(0.1)
+        self.assertFalse(cp.drive.isVisible())
+        self.assertEqual(cp.adv_keys_btn.text(), "Show advanced keyboard controls")
+        cp.adv_keys_btn.click()
+        pump(0.1)
+        self.assertTrue(cp.drive.isVisible())
+        self.assertEqual(cp.adv_keys_btn.text(), "Hide advanced keyboard controls")
+        cp.adv_keys_btn.click()
+        pump(0.1)
+        self.assertFalse(cp.drive.isVisible())
+
+    def test_live_signal_is_hidden_on_the_armband_page_until_asked(self):
+        page = self.window.pages["armband"]
+        self.window.go_to("armband")
+        pump(0.1)
+        self.assertFalse(page.signal_card.isVisible())
+        self.assertEqual(page.signal_btn.text(), "Show live signal")
+        page.signal_btn.click()
+        pump(0.1)
+        self.assertTrue(page.signal_card.isVisible())
+        self.assertEqual(page.signal_btn.text(), "Hide live signal")
+        page.signal_btn.click()
+        pump(0.1)
+        self.assertFalse(page.signal_card.isVisible())
 
     def test_pad_is_disabled_until_armed(self):
         self.assertFalse(self.window.pages["control"].pad_buttons["up"].isEnabled())

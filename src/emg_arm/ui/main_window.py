@@ -543,6 +543,7 @@ class MainWindow(QMainWindow):
         ok, voltage = arm.battery()
         arm.set_speed(self.pages["control"].speed.value())
         self.arm, self.streamer = arm, streamer
+        self.arm_note = ""
         self.apply_tuning(self.pages["data"].current_tuning(), save=False)
         streamer.start()
         self.teleop = Teleop(arm, self.gesture_filter, self.config, streamer, self.mapping)
@@ -552,9 +553,9 @@ class MainWindow(QMainWindow):
         self.open_log()
         unknown = [str(s) for s, p in positions.items() if p is None]
         volt = f"{voltage:.2f} V" if voltage else "voltage n/a"
-        rp.banner.set(f"Connected: {backend.name}  ·  {volt}.  Next: send it home." + (
-            f"\nCould not read servo(s) {', '.join(unknown)}: their first move will be extra slow." if unknown else ""),
-            "good" if ok else "bad")
+        self.arm_note = f"{backend.name}  ·  {volt}" + (
+            f"\nCould not read servo(s) {', '.join(unknown)}: their first move will be extra slow." if unknown else "")
+        rp.banner.set(f"Connected: {self.arm_note}", "good" if ok else "bad")
         rp.connect_btn.setText("Disconnect arm")
         theme.set_role(rp.connect_btn, "danger")
         self.refresh_servo_view()
@@ -563,6 +564,8 @@ class MainWindow(QMainWindow):
         if not ok:
             QMessageBox.warning(self, "Low voltage", f"Arm supply reads {voltage:.2f} V (minimum {arm.min_battery} V).\n"
                                 "Use the 7.5 V adapter / charge the battery before moving the arm.")
+        else:
+            self.go_home(confirm=False)               # connecting is the go-ahead: the arm homes by itself (slowly)
         self.refresh_status()
 
     def disconnect_arm(self):
@@ -595,16 +598,18 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.handle_arm_failure(exc)
             return
-        self.home_busy_until = time.monotonic() + seconds + 0.3
-        self.pages["arm"].banner.set(f"Homing… ({seconds:.1f} s)", "accent")
+        wait = seconds + 0.3 if not isinstance(self.arm.backend, SimulatedBackend) else 0.2   # a simulated arm needs no real time
+        self.home_busy_until = time.monotonic() + wait
+        self.pages["arm"].banner.set(f"Moving to the home pose… ({seconds:.1f} s). Please keep clear of the arm.", "accent")
         self.log("home", note=f"{seconds:.1f}s")
         self.refresh_servo_view()
-        QTimer.singleShot(int((seconds + 0.3) * 1000), self.after_home)
+        QTimer.singleShot(int(wait * 1000), self.after_home)
         self.refresh_status()
 
     def after_home(self):
         if self.arm and self.arm.homed:
-            self.pages["arm"].banner.set("At home. Press ARM below to enable motion.", "good")
+            self.pages["arm"].banner.set(f"Ready: the arm is at home ({getattr(self, 'arm_note', '').splitlines()[0] if getattr(self, 'arm_note', '') else 'connected'}). "
+                                         "Press ARM below to enable motion.", "good")
         self.refresh_status()
 
     def manual_gripper(self, closed):
@@ -724,8 +729,8 @@ class MainWindow(QMainWindow):
         rp.simulate.setEnabled(not connected)
         rp.card.set_done(connected and self.arm.homed)
         rp.home_btn.setEnabled(connected and not armed and not homing)
-        for b in (rp.open_btn, rp.close_btn):
-            b.setEnabled(connected and self.arm.homed and not homing)
+        rp.grip_btn.setEnabled(connected and self.arm.homed and not homing)
+        rp.set_gripper_state(self.arm.gripper_closed if connected else None)
         cp.arm_btn.setEnabled((armed or self.can_arm()) and self.parking is None)
         cp.arm_btn.setText("DISARM" if armed else "ARM - enable motion")
         theme.set_role(cp.arm_btn, "ghost" if armed else "success")
@@ -832,6 +837,7 @@ class MainWindow(QMainWindow):
                 bar.setValue(max(bar.minimum(), min(bar.maximum(), pos)))
         if self.arm.gripper_closed is not None:
             cp.gripper_label.setText(f"Gripper: {'CLOSED' if self.arm.gripper_closed else 'OPEN'}")
+        self.pages["arm"].set_gripper_state(self.arm.gripper_closed)
 
     # ================================================================ settings hooks
     def apply_tuning(self, values, save=False):

@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 VENV_DIR = PROJECT_ROOT / ".venv"
 REQUIREMENTS = PROJECT_ROOT / "requirements.txt"
 STAMP = VENV_DIR / ".requirements.sha256"
-MODULES = ("numpy", "PyQt5", "pyqtgraph", "psutil", "joblib", "serial", "sklearn", "xarm", "hid")
+MODULES = ("numpy", "PyQt5", "pyqtgraph", "psutil", "joblib", "serial", "sklearn", "scipy", "xarm", "hid")
 MIN_PYTHON = (3, 11)
 _RELAUNCH_FLAG = "EMG_ARM_BOOTSTRAPPED"
 

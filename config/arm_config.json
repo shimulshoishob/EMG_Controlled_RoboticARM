@@ -33,7 +33,11 @@
     "match_duration": true,
     "jerk_units_per_s3": 6000,
 
-    "min_battery_voltage": 6.6
+    "min_battery_voltage": 6.6,
+
+    "_exit_comment": "When the app closes, the arm first moves slowly to the home pose (the safe resting pose) and then opens the gripper, so its servo is not left squeezing an object.",
+    "park_on_exit": true,
+    "open_gripper_on_exit": true
   },
 
   "gestures": {

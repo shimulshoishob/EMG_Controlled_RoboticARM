@@ -52,7 +52,13 @@ class ArmbandPage(QWidget):
             root.addWidget(page)
 
         root.addWidget(self._build_connect())
-        root.addWidget(self._build_health())
+        self.signal_card = self._build_health()
+        self.signal_btn = button("Show live signal", "ghost")
+        self.signal_btn.setCheckable(True)
+        self.signal_btn.toggled.connect(self._toggle_signal)
+        self.signal_card.setVisible(False)                 # hidden until asked; the scope is idle meanwhile
+        root.addWidget(self.signal_btn)
+        root.addWidget(self.signal_card)
         root.addStretch(1)
 
         self.mode.set_current(settings.get("connection") if settings.get("connection") in ("wifi", "usb") else "wifi")
@@ -177,9 +183,18 @@ class ArmbandPage(QWidget):
         return c
 
     # ================================================================ lifecycle
+    def _toggle_signal(self, shown: bool):
+        self.signal_card.setVisible(shown)
+        self.signal_btn.setText("Hide live signal" if shown else "Show live signal")
+        if shown and self.isVisible():
+            self.scope.start()
+        else:
+            self.scope.stop()
+
     def showEvent(self, e):
         super().showEvent(e)
-        self.scope.start()
+        if self.signal_card.isVisibleTo(self):
+            self.scope.start()
 
     def hideEvent(self, e):
         super().hideEvent(e)
