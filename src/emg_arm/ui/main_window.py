@@ -291,12 +291,12 @@ class MainWindow(QMainWindow):
         saved_mode = self.settings.get("control_mode")
         cp.mode.setCurrentIndex(max(0, cp.mode.findData(saved_mode)))
         dp = p["data"]
-        dp.record_toggled.connect(self.toggle_recording)
         dp.theme_changed.connect(self.set_theme)
         dp.tuning_changed.connect(self.apply_tuning)
         dp.export_requested.connect(self.export_configuration)
         dp.import_requested.connect(self.import_configuration)
         p["mapping"].mapping_saved.connect(self.on_mapping_saved)
+        p["mapping"].disarm_requested.connect(lambda: self.disarm("Disarmed to change the gesture mapping"))
         self.on_vertical_changed()
         p["mapping"].set_vertical(cp.vertical.currentData() or "shoulder")
 
@@ -491,26 +491,16 @@ class MainWindow(QMainWindow):
 
     # ================================================================ recording
     def toggle_recording(self, tag: str):
-        dp = self.pages["data"]
+        """Raw-signal recording UI was removed; this only stops a recorder if one exists."""
         if self.recorder:
             self.bridge.recorder = None
             rec, self.recorder = self.recorder, None
             rec.close()
             self.record_timer.stop()
-            dp.set_recording(False, str(rec.path), rec.frames)
-        else:
-            if not self.bridge.active:
-                dp.record_status.set("Connect the armband first (EMG & model → Armband connection).", "warn")
-                return
-            self.recorder = RawRecorder(label=tag)
-            self.bridge.recorder = self.recorder
-            self.record_timer.start()
-            dp.set_recording(True, str(self.recorder.path), 0)
         self.refresh_status()
 
     def _update_recording(self):
-        if self.recorder:
-            self.pages["data"].set_recording(True, str(self.recorder.path), self.recorder.frames)
+        pass
 
     # ===================================================================== arm
     def toggle_arm(self):

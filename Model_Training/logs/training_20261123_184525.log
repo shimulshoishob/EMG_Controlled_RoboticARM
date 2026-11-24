@@ -1,0 +1,6 @@
+18:45:25 | INFO    | Run 20261123_184525: task=classification, target='gesture', 3168 train / 651 test windows, 2 models, max 2 in parallel
+18:45:26 | INFO    | [SVM (RBF)] started (pid 19464, 6 threads)
+18:45:26 | INFO    | [SVM (linear)] started (pid 13860, 6 threads)
+18:45:50 | INFO    | [SVM (linear)] completed in 23.5s -> D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\outputs\trained_models\SVMlinear_20261123_184525.joblib
+18:45:51 | INFO    | [SVM (RBF)] completed in 24.9s -> D:\RoboArm\EMG_Controlled_RoboticARM\Model_Training\outputs\trained_models\SVMRBF_20261123_184525.joblib
+18:45:51 | INFO    | Run finished in 25.8s: 2/2 models completed
