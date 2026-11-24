@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 import warnings
@@ -13,6 +14,7 @@ import numpy as np
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from .features import extract_window_features
+from ..paths import PROJECT_ROOT
 
 try:  # models saved with another scikit-learn version still work; don't nag
     from sklearn.exceptions import InconsistentVersionWarning
@@ -39,14 +41,48 @@ class ModelError(RuntimeError):
     pass
 
 
+# Libraries a Model_Training bundle may need to be unpickled; they are optional in the app.
+_OPTIONAL_LIBS = {"catboost": "catboost", "xgboost": "xgboost", "lightgbm": "lightgbm", "torch": "torch<2.10"}
+
+
+def _read_failure(exc: Exception) -> ModelError:
+    missing = getattr(exc, "name", None) if isinstance(exc, ModuleNotFoundError) else None
+    root = (missing or "").split(".")[0]
+    if root in _OPTIONAL_LIBS:
+        return ModelError(
+            f"This model was trained with '{root}', which is not installed for this app. Install it with:  "
+            f"\"{sys.executable}\" -m pip install \"{_OPTIONAL_LIBS[root]}\"  and restart the app, "
+            f"or pick a model that needs no extra library (Random Forest, Extra Trees, LDA, SVM, k-NN, MLP, ...).")
+    return ModelError(f"Could not read the model file: {exc}")
+
+
+def _load_gesture_bundle(artifact) -> LoadedModel:
+    """A bundle written by Model_Training: the classifier does filtering, features and scaling itself."""
+    clf = artifact["classifier"]
+    return LoadedModel(
+        path="", model=clf, class_names=[str(c) for c in clf.classes], input_channels=int(clf.n_channels),
+        window_samples=int(clf.window_samples), stride_samples=int(clf.stride_samples),
+        n_features=int(artifact.get("metadata", {}).get("n_features", 0) or 0))
+
+
 def load_model(path) -> LoadedModel:
     import joblib
+    if str(PROJECT_ROOT) not in sys.path:          # bundles from Model_Training reference its classes
+        sys.path.insert(0, str(PROJECT_ROOT))
     try:
         artifact = joblib.load(path)
     except Exception as exc:
-        raise ModelError(f"Could not read the model file: {exc}") from exc
+        raise _read_failure(exc) from exc
+    if isinstance(artifact, dict) and artifact.get("format") == "emg_gesture_classifier":
+        loaded = _load_gesture_bundle(artifact)
+        loaded.path = str(path)
+        return loaded
+    if isinstance(artifact, dict) and "pipeline" in artifact:
+        raise ModelError("This is a table-data model (one row per sample, no EMG windows), so it cannot drive the "
+                         "arm. Train a gesture model in Model_Training with the EMG recording option instead.")
     if not isinstance(artifact, dict) or "model" not in artifact or "class_names" not in artifact:
-        raise ModelError("This file is not a BioWave model (expected 'model' and 'class_names').")
+        raise ModelError("This file is not a gesture model (expected a Model_Training EMG bundle, or 'model' and "
+                         "'class_names').")
     model = artifact["model"]
     n_features = int(getattr(model, "n_features_in_", 0))
     channels = artifact.get("input_channels") or CHANNELS_BY_FEATURES.get(n_features, 4)
@@ -108,6 +144,11 @@ class InferenceWorker(QThread):
             if win is None or model is None:
                 continue
             try:
+                if hasattr(model, "predict_window"):          # Model_Training bundle: raw (samples, channels) in
+                    label, conf = model.predict_window(win.T)
+                    self.last_latency_s = time.monotonic() - t_submit
+                    self.prediction_ready.emit(str(label), float(conf))
+                    continue
                 feats = extract_window_features(win, sample_rate=self.sample_rate).reshape(1, -1)
                 if hasattr(model, "predict_proba"):
                     proba = model.predict_proba(feats)[0]

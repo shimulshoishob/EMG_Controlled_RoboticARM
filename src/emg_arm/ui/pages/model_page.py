@@ -63,13 +63,17 @@ class ModelPage(QWidget):
 
     def refresh(self):
         self.list.clear()
-        roots = [MODELS_DIR, PROJECT_ROOT.parent / "BioWaveEMG_ArmBand" / "trained_model"]
+        roots = [MODELS_DIR, PROJECT_ROOT / "Model_Training" / "outputs" / "trained_models",
+                 PROJECT_ROOT.parent / "BioWaveEMG_ArmBand" / "trained_model"]
         last = self.settings.get("last_model")
         paths = find_models(*roots)
         if last and Path(last).exists() and Path(last) not in paths:
             paths.insert(0, Path(last))
         for p in paths[:200]:
-            item = QListWidgetItem(f"{p.parent.name}\n{p.parent.parent.name}/{p.name}")
+            if p.parent.name == "trained_models":
+                item = QListWidgetItem(f"{p.stem}\ntrained_models/{p.name}")
+            else:
+                item = QListWidgetItem(f"{p.parent.name}\n{p.parent.parent.name}/{p.name}")
             item.setData(Qt.UserRole, str(p))
             self.list.addItem(item)
             if last and str(p) == last:
@@ -91,7 +95,7 @@ class ModelPage(QWidget):
             self.model_requested.emit(path)
 
     def show_loaded(self, loaded: LoadedModel, mapping: dict, problems: list):
-        name = Path(loaded.path).parent.name
+        name = Path(loaded.path).stem if Path(loaded.path).parent.name == "trained_models" else Path(loaded.path).parent.name
         tone = "warn" if problems else "good"
         text = (f"Loaded “{name}”  ·  {len(loaded.class_names)} gestures  ·  {loaded.input_channels} input channels  ·  "
                 f"{loaded.window_samples}-sample window")

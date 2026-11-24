@@ -11,3 +11,9 @@ PyWavelets
 # Robotic arm (Hiwonder xArm 1S over USB)
 xarm==0.0.4
 hidapi              # provides the `hid` module xarm uses. Do NOT install the package named "hid".
+
+# Extra libraries some Model_Training models need (XGBoost / LightGBM / CatBoost bundles fail to load without them)
+scipy
+xgboost
+lightgbm
+catboost
