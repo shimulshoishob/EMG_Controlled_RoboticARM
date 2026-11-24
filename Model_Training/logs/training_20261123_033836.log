@@ -1,0 +1,32 @@
+03:38:36 | INFO    | Run 20261123_033836: task=classification, target='Label', 360808 train / 90202 test rows, 25 models, max 4 in parallel
+03:38:36 | WARNING | WARNING Dropped 135 duplicate rows (before splitting, so no row is in both sets).
+03:38:36 | INFO    | [Random Forest] started (pid 8327, 2 threads)
+03:38:36 | INFO    | [Extra Trees] started (pid 8328, 2 threads)
+03:38:36 | INFO    | [XGBoost] started (pid 8329, 2 threads)
+03:38:36 | INFO    | [LightGBM] started (pid 8330, 2 threads)
+03:39:21 | INFO    | [Random Forest] cancelled
+03:39:21 | INFO    | [Extra Trees] cancelled
+03:39:21 | INFO    | [XGBoost] cancelled
+03:39:21 | INFO    | [LightGBM] cancelled
+03:39:21 | INFO    | [CatBoost] cancelled
+03:39:21 | INFO    | [SVM (RBF)] cancelled
+03:39:21 | INFO    | [SVM (linear)] cancelled
+03:39:21 | INFO    | [k-NN] cancelled
+03:39:21 | INFO    | [Logistic Regression] cancelled
+03:39:21 | INFO    | [LDA] cancelled
+03:39:21 | INFO    | [Gradient Boosting] cancelled
+03:39:21 | INFO    | [MLP] cancelled
+03:39:21 | INFO    | [1D CNN] cancelled
+03:39:21 | INFO    | [2D CNN] cancelled
+03:39:21 | INFO    | [LSTM] cancelled
+03:39:21 | INFO    | [BiLSTM] cancelled
+03:39:21 | INFO    | [GRU] cancelled
+03:39:21 | INFO    | [Transformer] cancelled
+03:39:21 | INFO    | [CNN-LSTM] cancelled
+03:39:21 | INFO    | [CNN-GRU] cancelled
+03:39:21 | INFO    | [CNN-BiLSTM] cancelled
+03:39:21 | INFO    | [CNN-TCN] cancelled
+03:39:21 | INFO    | [CNN-Attention] cancelled
+03:39:21 | INFO    | [CNN-Transformer] cancelled
+03:39:21 | INFO    | [CNN + Random Forest] cancelled
+03:39:21 | INFO    | Run finished in 44.3s: 0/25 models completed

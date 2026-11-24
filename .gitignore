@@ -1,6 +1,8 @@
-logs/
+logs/*
+!logs/README.md
 poses.json
 settings.json
 __pycache__/
 .venv/
-Model_Training/outputs/
+Model_Training/outputs/*
+!Model_Training/outputs/README.md

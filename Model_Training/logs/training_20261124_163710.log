@@ -1,0 +1,10 @@
+16:37:10 | INFO    | Run 20261124_163710: task=classification, target='gesture', 15041 train / 4193 test windows, 4 models, max 4 in parallel
+16:37:10 | INFO    | [Random Forest] started (pid 19271, 2 threads)
+16:37:10 | INFO    | [SVM (RBF)] started (pid 19272, 2 threads)
+16:37:10 | INFO    | [SVM (linear)] started (pid 19273, 2 threads)
+16:37:10 | INFO    | [LDA] started (pid 19274, 2 threads)
+16:37:16 | INFO    | [LDA] completed in 6.0s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/LDA_20261124_163710.joblib
+16:37:41 | INFO    | [SVM (linear)] completed in 31.0s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/SVMlinear_20261124_163710.joblib
+16:37:44 | INFO    | [SVM (RBF)] completed in 33.8s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/SVMRBF_20261124_163710.joblib
+16:37:47 | INFO    | [Random Forest] completed in 36.8s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/RandomForest_20261124_163710.joblib
+16:37:47 | INFO    | Run finished in 37.0s: 4/4 models completed

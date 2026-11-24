@@ -1,7 +1,35 @@
+<div align="center">
+
+# 🧠 Model_Training
+
+**Train, compare and benchmark 25 EMG gesture models: one command, or a desktop Training Studio**
+
+[↑ Project](../README.md) · [Machine-learning guide](../docs/MACHINE_LEARNING.md)
+
+</div>
+
+## Where things are
+
+| Folder / file | What it is |
+|---|---|
+| [`model_train.py`](model_train.py) + the modules next to it | the EMG benchmark **CLI** (data → splits → windows → features → models → report) |
+| [`app/`](app/README.md) | **Training Studio**, a desktop GUI that trains several models at once and exports `.joblib` bundles |
+| [`models/`](models/README.md) | the model registry, classical-ML wrappers and the PyTorch networks |
+| [`outputs/`](outputs/README.md) | everything the Training Studio produces (trained models, reports, plots) |
+| [`results/`](results/README.md) | experiment folders written by the CLI benchmark |
+| [`datasets/`](datasets/README.md) | sample tabular datasets for the Studio |
+| [`data_demo/`](data_demo/README.md) | synthetic EMG recordings for smoke tests |
+| [`logs/`](logs/README.md) | training logs |
+| [`tests/`](tests/README.md) | training-side tests |
+
+**The whole story of the data, preprocessing, features and models is in [docs/MACHINE_LEARNING.md](../docs/MACHINE_LEARNING.md).**
+
+---
+
 # Model_Training - EMG gesture model benchmark
 
 Trains, evaluates, compares and benchmarks **25 models** for real-time EMG gesture classification with one command.
-It lives next to the app and **does not modify or import anything from `src/emg_arm`**; it has its own dependency list and virtual environment.
+It lives next to the app and **does not import anything from `src/emg_arm`** (the app, in turn, loads the bundles written here); it has its own dependency list and virtual environment.
 
 | Family | Models (key) |
 |---|---|
@@ -69,15 +97,18 @@ fastest viable, best real-time (macro-F1 + latency headroom + size, over-budget 
 
 ## Using a trained model in the real-time app
 
+Exported bundles work in the desktop app directly: **Gesture model → Upload .joblib files… → Use selected model**.
+
 ```python
-from Model_Training.inference import GestureClassifier
-clf = GestureClassifier.load(r"Model_Training/results/experiment_001/models/recommended_realtime")
+from Model_Training.app.inference import load_gesture_classifier      # bundles from the Training Studio
+# or: from Model_Training.inference import GestureClassifier           # bundles from the CLI benchmark
+clf = load_gesture_classifier("Model_Training/outputs/trained_models/LDA_20261124_143936.joblib")
 label, confidence = clf.predict_window(window)     # window: (samples, channels) raw ADC counts, clf.window_samples long
 ```
 A bundle holds the classifier, filter settings, feature definition, normalisation statistics and class names, so nothing else is needed.
-`label, confidence` has the same shape as the app's `prediction_ready(str, float)` signal; the app's `ml/inference.py` currently expects its own
-joblib format with its own features, so wiring this in means replacing the single `extract_window_features(...)` + `predict_proba(...)` call in `InferenceWorker.run` with `clf.predict_window(win)`
-(not done here on purpose: the existing app was left untouched). Gesture names are passed through as trained, so use labels the app's `resolve_gesture` understands (`left`, `closed_fist`, `thumbs_up`, ...) or `data.gesture_aliases`.
+`label, confidence` has the same shape as the app's `prediction_ready(str, float)` signal, and the app's `ml/inference.py` calls `predict_window()` for these bundles
+(older joblibs with `model` + `class_names` still use the app's own features). Gesture names are passed through as trained, so use labels the app's `resolve_gesture` understands
+(`left`, `closed_fist`, `thumbs_up`, ...) or `data.gesture_aliases`. A model that needs XGBoost / LightGBM / CatBoost / PyTorch needs that library in the app's `.venv` too.
 
 ## Layout
 

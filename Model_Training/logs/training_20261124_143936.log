@@ -1,0 +1,26 @@
+14:39:36 | INFO    | Run 20261124_143936: task=classification, target='gesture', 1906 train / 343 test windows, 12 models, max 4 in parallel
+14:39:36 | INFO    | [Random Forest] started (pid 16357, 2 threads)
+14:39:36 | INFO    | [Extra Trees] started (pid 16358, 2 threads)
+14:39:36 | INFO    | [XGBoost] started (pid 16359, 2 threads)
+14:39:36 | INFO    | [LightGBM] started (pid 16360, 2 threads)
+14:39:50 | INFO    | [Extra Trees] completed in 13.6s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/ExtraTrees_20261124_143936.joblib
+14:39:50 | INFO    | [CatBoost] started (pid 16370, 2 threads)
+14:39:50 | INFO    | [Random Forest] completed in 14.2s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/RandomForest_20261124_143936.joblib
+14:39:51 | INFO    | [LightGBM] completed in 14.6s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/LightGBM_20261124_143936.joblib
+14:39:51 | INFO    | [SVM (RBF)] started (pid 16373, 2 threads)
+14:39:51 | INFO    | [SVM (linear)] started (pid 16374, 2 threads)
+14:39:52 | INFO    | [XGBoost] completed in 16.4s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/XGBoost_20261124_143936.joblib
+14:39:52 | INFO    | [k-NN] started (pid 16377, 2 threads)
+14:39:57 | INFO    | [SVM (linear)] completed in 5.7s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/SVMlinear_20261124_143936.joblib
+14:39:57 | INFO    | [Logistic Regression] started (pid 16382, 2 threads)
+14:39:57 | INFO    | [SVM (RBF)] completed in 6.2s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/SVMRBF_20261124_143936.joblib
+14:39:57 | INFO    | [LDA] started (pid 16384, 2 threads)
+14:39:59 | INFO    | [k-NN] completed in 5.7s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/kNN_20261124_143936.joblib
+14:39:59 | INFO    | [Gradient Boosting] started (pid 16387, 2 threads)
+14:40:03 | INFO    | [Logistic Regression] completed in 5.9s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/LogisticRegression_20261124_143936.joblib
+14:40:03 | INFO    | [LDA] completed in 5.7s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/LDA_20261124_143936.joblib
+14:40:03 | INFO    | [MLP] started (pid 16392, 2 threads)
+14:40:09 | INFO    | [MLP] completed in 5.3s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/MLP_20261124_143936.joblib
+14:40:11 | INFO    | [Gradient Boosting] completed in 12.3s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/GradientBoosting_20261124_143936.joblib
+14:40:42 | INFO    | [CatBoost] completed in 52.2s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/CatBoost_20261124_143936.joblib
+14:40:42 | INFO    | Run finished in 66.5s: 12/12 models completed

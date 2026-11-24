@@ -1,0 +1,34 @@
+03:39:31 | INFO    | Run 20261123_033931: task=classification, target='Label', 360808 train / 90202 test rows, 25 models, max 1 in parallel
+03:39:31 | WARNING | WARNING Dropped 135 duplicate rows (before splitting, so no row is in both sets).
+03:39:31 | INFO    | [Random Forest] started (pid 8376, 8 threads)
+03:40:05 | INFO    | [Random Forest] completed in 33.6s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/RandomForest_20261123_033931.joblib
+03:40:05 | INFO    | [Extra Trees] started (pid 8379, 8 threads)
+03:40:23 | INFO    | [Extra Trees] completed in 18.0s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/ExtraTrees_20261123_033931.joblib
+03:40:23 | INFO    | [XGBoost] started (pid 8385, 8 threads)
+03:41:03 | INFO    | [XGBoost] completed in 39.0s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/XGBoost_20261123_033931.joblib
+03:41:03 | INFO    | [LightGBM] started (pid 8399, 8 threads)
+03:41:45 | INFO    | [LightGBM] completed in 42.3s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/LightGBM_20261123_033931.joblib
+03:41:45 | INFO    | [CatBoost] started (pid 8412, 8 threads)
+03:43:28 | INFO    | [CatBoost] completed in 102.7s -> /Users/shimulkumarshoishob/Documents/CAPSTONE/EMG_Controlled_RoboticARM/Model_Training/outputs/trained_models/CatBoost_20261123_033931.joblib
+03:43:28 | INFO    | [SVM (RBF)] started (pid 8444, 8 threads)
+03:50:07 | INFO    | [SVM (RBF)] cancelled
+03:50:07 | INFO    | [SVM (linear)] cancelled
+03:50:07 | INFO    | [k-NN] cancelled
+03:50:07 | INFO    | [Logistic Regression] cancelled
+03:50:07 | INFO    | [LDA] cancelled
+03:50:07 | INFO    | [Gradient Boosting] cancelled
+03:50:07 | INFO    | [MLP] cancelled
+03:50:07 | INFO    | [1D CNN] cancelled
+03:50:07 | INFO    | [2D CNN] cancelled
+03:50:07 | INFO    | [LSTM] cancelled
+03:50:07 | INFO    | [BiLSTM] cancelled
+03:50:07 | INFO    | [GRU] cancelled
+03:50:07 | INFO    | [Transformer] cancelled
+03:50:07 | INFO    | [CNN-LSTM] cancelled
+03:50:07 | INFO    | [CNN-GRU] cancelled
+03:50:07 | INFO    | [CNN-BiLSTM] cancelled
+03:50:07 | INFO    | [CNN-TCN] cancelled
+03:50:07 | INFO    | [CNN-Attention] cancelled
+03:50:07 | INFO    | [CNN-Transformer] cancelled
+03:50:07 | INFO    | [CNN + Random Forest] cancelled
+03:50:07 | INFO    | Run finished in 635.7s: 5/25 models completed
