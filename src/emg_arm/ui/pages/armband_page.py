@@ -153,7 +153,7 @@ class ArmbandPage(QWidget):
         self.banner = Banner("Not connected.", "none")
         c.add(self.banner)
         row = QHBoxLayout()
-        self.doctor_btn = button("Connection doctor", "ghost", "Checks network, key and firewall step by step",
+        self.doctor_btn = button("Connection setup", "ghost", "Checks network, key and firewall step by step",
                                  slot=self.open_doctor)
         row.addWidget(self.doctor_btn)
         row.addStretch(1)
@@ -307,7 +307,7 @@ class ArmbandPage(QWidget):
             self.scan_banner.set(
                 f"No armband answered on {nets}.{vpn} Check that it is powered, that it joined the same 2.4 GHz Wi-Fi "
                 "(redo step 1 if the Wi-Fi changed), and that the router does not isolate wireless clients. "
-                "You can also type its IP address below, or run the Connection doctor.", "warn")
+                "You can also type its IP address below, or run the Connection setup.", "warn")
 
     def _pick_device(self):
         item = self.found_list.currentItem()

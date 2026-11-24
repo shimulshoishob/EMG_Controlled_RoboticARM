@@ -1,4 +1,4 @@
-"""Connection doctor: runs the same steps a person would, one at a time, and says what to fix.  No Qt."""
+"""Connection setup: runs the same steps a person would, one at a time, and says what to fix.  No Qt."""
 
 from __future__ import annotations
 

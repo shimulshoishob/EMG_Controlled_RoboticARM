@@ -1,4 +1,4 @@
-"""Guided dialogs: first-time Wi-Fi setup over USB, and the connection doctor."""
+"""Guided dialogs: first-time Wi-Fi setup over USB, and the connection setup check."""
 
 from __future__ import annotations
 
@@ -160,14 +160,14 @@ class DoctorDialog(QDialog):
 
     def __init__(self, parent=None, device_ip: str = "", key: str = ""):
         super().__init__(parent)
-        self.setWindowTitle("Connection doctor")
+        self.setWindowTitle("Connection setup")
         self.setMinimumSize(660, 560)
         self.device_ip, self.key = device_ip, key
         self.results: List[diagnostics.Check] = []
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 22)
         root.setSpacing(12)
-        root.addWidget(label("Connection doctor", "h1"))
+        root.addWidget(label("Connection setup", "h1"))
         root.addWidget(label("Runs the same steps a person would, one by one, and tells you exactly what to change.",
                              "lead", wrap=True))
         row = QHBoxLayout()
