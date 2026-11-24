@@ -8,10 +8,7 @@ from typing import Optional
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
-from ..armband.fake import FakeArmband
 from ..armband.link import BaseLink, LinkState, UsbLink, WifiLink
-
-VIRTUAL_KEY = "virtual-armband-demo-key-000000"
 
 
 class ArmbandBridge(QObject):
@@ -23,7 +20,6 @@ class ArmbandBridge(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.link: Optional[BaseLink] = None
-        self.virtual: Optional[FakeArmband] = None
         self._closing = False
         self.recorder = None             # session.RawRecorder or None
         self.mode = ""
@@ -59,21 +55,6 @@ class ArmbandBridge(QObject):
         self._hook_packets(self.link)
         self.link.start()
 
-    def connect_virtual(self):
-        self._begin("virtual")
-        try:
-            self.virtual = FakeArmband(VIRTUAL_KEY, bind_ip="127.0.0.1", name="Virtual armband (demo)",
-                                       device_id="000000VIRTUAL").start()
-        except OSError as exc:
-            self.mode = ""
-            self.state.emit(LinkState.FAILED.value,
-                            f"Could not start the virtual armband ({exc}). Is another copy of this app using "
-                            "UDP port 5001?")
-            return
-        self.link = WifiLink("127.0.0.1", VIRTUAL_KEY, *self._common(), device_id="000000VIRTUAL")
-        self._hook_packets(self.link)
-        self.link.start()
-
     def _begin(self, mode: str):
         if self.link is not None:
             raise RuntimeError("already connected")
@@ -83,7 +64,7 @@ class ArmbandBridge(QObject):
     # ----------------------------------------------------- disconnect
     def disconnect(self):
         """Stop in the background (it talks to the network); ``closed`` fires when done."""
-        link, virtual = self.link, self.virtual
+        link = self.link
         if link is None or self._closing:
             return
         self._closing = True
@@ -92,10 +73,7 @@ class ArmbandBridge(QObject):
             try:
                 link.stop()
             finally:
-                if virtual is not None:
-                    virtual.stop()
                 self.link = None
-                self.virtual = None
                 self.mode = ""
                 self._closing = False
                 self.state.emit(LinkState.IDLE.value, "Disconnected")
@@ -105,12 +83,9 @@ class ArmbandBridge(QObject):
 
     def shutdown(self):
         """Blocking stop for application exit."""
-        link, virtual = self.link, self.virtual
-        self.link = self.virtual = None
+        link, self.link = self.link, None
         if link is not None:
             try:
                 link.stop()
             except Exception:
                 pass
-        if virtual is not None:
-            virtual.stop()

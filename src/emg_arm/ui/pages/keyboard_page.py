@@ -1,12 +1,23 @@
-"""Keyboard control: the key reference, a key tester, and re-assigning keys."""
+"""Drive panel: every arm movement in one table - its on-screen button and its keyboard shortcuts side by side."""
 
 from __future__ import annotations
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QGridLayout, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QGridLayout, QPushButton
 
+from .. import theme
 from ..keyboard import MODIFIER_KEYS, KeyMap, pretty_key
 from ..widgets import Banner, Card, button, label
+
+# on-screen button (motion name used by the control loop) -> keyboard action id
+PAD_ACTIONS = {"left": "base_left", "right": "base_right", "up": "joint_up", "down": "joint_down",
+               "shoulder_up": "shoulder_up", "shoulder_down": "shoulder_down",
+               "elbow_up": "elbow_up", "elbow_down": "elbow_down"}
+_PAD_TEXT = {"left": "◀  Hold", "right": "Hold  ▶", "up": "▲  Hold", "down": "▼  Hold"}
+
+
+def _pad_text(motion: str) -> str:
+    return _PAD_TEXT.get(motion) or ("▲  Hold" if motion.endswith("_up") else "▼  Hold")
 
 
 class KeyCapture(QPushButton):
@@ -62,78 +73,92 @@ class KeyCapture(QPushButton):
         super().focusOutEvent(event)
 
 
-class KeyboardPage(QWidget):
+class DrivePanel(Card):
+    """One row per movement: [on-screen button] [key] [alternative key]. Works while the arm is ARMED."""
+    pad_pressed = pyqtSignal(str)
+    pad_released = pyqtSignal(str)
+    grip_pressed = pyqtSignal()
+
     def __init__(self, keymap: KeyMap, parent=None):
-        super().__init__(parent)
+        super().__init__("Move the arm: buttons and keys",
+                         "Hold a button or its key to move; release to stop; hold several to combine joints. "
+                         "To change a key, click it and press the new one (Backspace clears it). "
+                         "Space and Esc are always STOP.", parent=parent)
         self.keymap = keymap
-        self.armed = False
         self.capture_started = lambda: None
         self.capture_finished = lambda: None
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(16)
+        self.reset_btn = button("Reset keys", "ghost", slot=self._reset)
+        self.header_right.addWidget(self.reset_btn)
 
-        tester = Card("Key tester", "Press any key while the arm is disarmed to see how the application understands it. "
-                      "Use it to check your keyboard (Mac built-in, external, other layouts) before arming.")
-        self.last_key = Banner("Press a key…", "none")
-        tester.add(self.last_key)
-        self.held = label("", "caption")
-        tester.add(self.held)
-        root.addWidget(tester)
-
-        self.card = Card("Key assignments", "Click a key button, then press the new key. Backspace clears it. "
-                         "Space and Esc are always STOP and cannot be changed.")
-        self.reset_btn = button("Reset to defaults", "ghost", slot=self._reset)
-        self.card.header_right.addWidget(self.reset_btn)
-        self.grid = QGridLayout()
-        self.grid.setHorizontalSpacing(14)
-        self.grid.setVerticalSpacing(6)
+        self.pad_buttons = {}
+        self.grip_btn = None
+        motion_for = {action: motion for motion, action in PAD_ACTIONS.items()}
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(6)
+        for c, text in enumerate(("Movement", "Button", "Key", "Alternative key")):
+            grid.addWidget(label(text, "caption"), 0, c)
+        groups = {}
+        for action in keymap.actions:                   # keep first-seen group order, actions together
+            groups.setdefault(action.group, []).append(action)
         self.buttons = {}
-        group = None
-        row = 0
-        for action in keymap.actions:
-            if action.group != group:
-                group = action.group
-                self.grid.addWidget(label(group.upper(), "caption"), row, 0, 1, 3)
-                row += 1
-            self.grid.addWidget(label(action.label), row, 0)
-            pair = []
-            for slot in range(KeyMap.MAX_KEYS_PER_ACTION):
-                b = KeyCapture()
-                b.started.connect(self._capture_started)
-                b.finished.connect(self._capture_finished)
-                b.captured.connect(lambda key, a=action.id, s=slot: self._captured(a, s, key))
-                self.grid.addWidget(b, row, 1 + slot)
-                pair.append(b)
-            self.buttons[action.id] = pair
+        row = 1
+        for group, actions in groups.items():
+            grid.addWidget(label(group.upper(), "caption"), row, 0, 1, 4)
             row += 1
-        self.grid.setColumnStretch(0, 1)
-        self.card.add(self.grid)
+            for action in actions:
+                grid.addWidget(label(action.label), row, 0)
+                if action.id in motion_for:
+                    motion = motion_for[action.id]
+                    b = button(_pad_text(motion))
+                    b.setMinimumHeight(34)
+                    b.pressed.connect(lambda m=motion: self.pad_pressed.emit(m))
+                    b.released.connect(lambda m=motion: self.pad_released.emit(m))
+                    grid.addWidget(b, row, 1)
+                    self.pad_buttons[motion] = b
+                elif action.id == "gripper_toggle":
+                    self.grip_btn = button("Toggle")
+                    self.grip_btn.setMinimumHeight(34)
+                    self.grip_btn.clicked.connect(self.grip_pressed.emit)
+                    grid.addWidget(self.grip_btn, row, 1)
+                pair = []
+                for slot in range(KeyMap.MAX_KEYS_PER_ACTION):
+                    k = KeyCapture()
+                    k.started.connect(lambda: self.capture_started())
+                    k.finished.connect(lambda: self.capture_finished())
+                    k.captured.connect(lambda key, a=action.id, s=slot: self._captured(a, s, key))
+                    grid.addWidget(k, row, 2 + slot)
+                    pair.append(k)
+                self.buttons[action.id] = pair
+                row += 1
+        grid.setColumnStretch(0, 1)
+        self.add(grid)
+        self.key_label = label("Keyboard: idle", "caption")
+        self.add(self.key_label)
         self.status = Banner("", "none")
-        self.card.add(self.status)
-        root.addWidget(self.card)
-
-        stop = Card("Always available")
-        stop.add(label("Space  or  Esc      EMERGENCY STOP (works on every page)\n"
-                       "Combinations with Ctrl / Cmd / Alt are ignored so system shortcuts keep working.\n"
-                       "Motion keys only move the arm while it is ARMED and no text box has focus; "
-                       "they continue as long as you hold them and stop when you release.", "mono", wrap=True))
-        root.addWidget(stop)
-        root.addStretch(1)
+        self.add(self.status)
+        self.set_pad_enabled(False)
         self.refresh()
         if keymap.load_warning:
             self.status.set(keymap.load_warning, "warn")
 
     # ---- outside
     def attach(self, controller):
-        """Connect the live key tester to the controller."""
-        controller.key_seen.connect(lambda text: self.last_key.set(text, "none" if "not assigned" in text else "good"))
-        controller.held_changed.connect(lambda keys: self.held.setText("Held: " + "  ".join(keys) if keys else ""))
+        """Let the key controller pause itself while a key is being re-assigned."""
         self.capture_started = lambda: setattr(controller, "capturing", True)
         self.capture_finished = lambda: setattr(controller, "capturing", False)
 
+    def set_pad_enabled(self, enabled: bool):
+        for b in list(self.pad_buttons.values()) + ([self.grip_btn] if self.grip_btn else []):
+            b.setEnabled(enabled)
+
+    def highlight_key(self, motion: str, down: bool):
+        b = self.pad_buttons.get(motion)
+        if b is not None:
+            t = theme.tokens()
+            b.setStyleSheet(f"QPushButton {{ background: {t.accent}; color: {t.accent_text}; }}" if down else "")
+
     def set_armed(self, armed: bool):
-        self.armed = armed
         for pair in self.buttons.values():
             for b in pair:
                 b.setEnabled(not armed)
@@ -149,17 +174,7 @@ class KeyboardPage(QWidget):
             for i, b in enumerate(pair):
                 b.show_key(keys[i] if i < len(keys) else 0)
 
-    def reference_text(self) -> str:
-        km = self.keymap
-        return "\n".join(f"{a.label:<34} {km.label_for(a.id)}" for a in km.actions) + "\nSTOP                               Space / Esc"
-
     # ---- internals
-    def _capture_started(self):
-        self.capture_started()
-
-    def _capture_finished(self):
-        self.capture_finished()
-
     def _captured(self, action_id: str, slot: int, key: int):
         keys = self.keymap.keys_for(action_id)
         while len(keys) < KeyMap.MAX_KEYS_PER_ACTION:

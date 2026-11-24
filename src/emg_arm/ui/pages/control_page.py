@@ -1,4 +1,5 @@
-"""Arm control: arm the robot, choose the control mode, watch what the gestures do."""
+"""Arm control - the main screen: connect the arm, enable motion, watch what the gestures do, drive it with
+buttons or keys."""
 
 from __future__ import annotations
 
@@ -6,9 +7,9 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QProgressBar, QSpinBox,
                              QVBoxLayout, QWidget)
 
-from .. import theme
-from ..theme import MOD
-from ..widgets import Banner, Card, Chip, button, label
+from ..widgets import Banner, Card, button, label
+from .arm_page import ArmPage
+from .keyboard_page import DrivePanel
 
 
 class ControlPage(QWidget):
@@ -18,22 +19,21 @@ class ControlPage(QWidget):
     grip_pressed = pyqtSignal()
 
     def set_pad_enabled(self, enabled: bool):
-        for b in list(self.pad_buttons.values()) + [self.grip_btn]:
-            b.setEnabled(enabled)
+        self.drive.set_pad_enabled(enabled)
 
     def highlight_key(self, motion: str, down: bool):
-        b = self.pad_buttons.get(motion)
-        if b is not None:
-            t = theme.tokens()
-            b.setStyleSheet(f"QPushButton {{ background: {t.accent}; color: {t.accent_text}; }}" if down else "")
+        self.drive.highlight_key(motion, down)
 
-    def __init__(self, config: dict, gesture_min_conf: float, parent=None):
+    def __init__(self, config: dict, gesture_min_conf: float, keymap, simulate_default: bool, parent=None):
         super().__init__(parent)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(16)
 
-        c1 = Card("Enable motion", "The arm only moves while ARMED. The red STOP button (and Space or Esc) works at any time.", step=1)
+        self.arm_page = ArmPage(simulate_default)
+        root.addWidget(self.arm_page)
+
+        c1 = Card("Enable motion", "The arm only moves while ARMED. The red STOP button (and Space or Esc) works at any time.", step=2)
         self.arm_btn = button("ARM - enable motion", "success", slot=self.arm_toggled.emit)
         self.arm_btn.setMinimumHeight(40)
         c1.header_right.addWidget(self.arm_btn)
@@ -75,7 +75,7 @@ class ControlPage(QWidget):
         live.add(self.gripper_label)
         row.addWidget(live, 3, Qt.AlignTop)
 
-        opts = Card("Settings")
+        opts = Card("Control options")
         form = QGridLayout()
         form.setHorizontalSpacing(12)
         form.addWidget(label("Control mode", "muted"), 3, 0)
@@ -112,50 +112,12 @@ class ControlPage(QWidget):
         row.addWidget(opts, 2, Qt.AlignTop)
         root.addLayout(row)
 
-        pad = Card("Drive with the keyboard or this pad",
-                   "Hold a key (or press and hold a pad button) to move; hold several to combine joints. Works while ARMED, "
-                   "with or without the armband.")
-        self.pad_buttons = {}
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(8)
-        rows = [("Base", [("left", "◀  Left"), ("right", "Right  ▶")]),
-                ("Selected joint", [("up", "▲  Up"), ("down", "▼  Down")])]
-        for name in config["vertical_joints"]:
-            rows.append((name.title(), [(f"{name}_up", "▲  Up"), (f"{name}_down", "▼  Down")]))
-        self.pad_texts = {motion: text for _n, items in rows for motion, text in items}
-        for r, (name, items) in enumerate(rows):
-            grid.addWidget(label(name, "muted"), r, 0)
-            for c, (motion, text) in enumerate(items):
-                b = button(text)
-                b.setMinimumHeight(38)
-                b.pressed.connect(lambda m=motion: self.pad_pressed.emit(m))
-                b.released.connect(lambda m=motion: self.pad_released.emit(m))
-                grid.addWidget(b, r, c + 1)
-                self.pad_buttons[motion] = b
-        self.grip_btn = button("Toggle gripper", slot=self.grip_pressed.emit)
-        self.grip_btn.setMinimumHeight(38)
-        grid.addWidget(self.grip_btn, len(rows), 1, 1, 2)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
-        pad.add(grid)
-        root.addWidget(pad)
-
-        keys = Card("Keyboard reference", "Works while ARMED and no text box has focus; hold a key to move, release to stop, "
-                    "hold several to combine joints. Change keys on the Keyboard page.")
-        self.keys_text = label("", "mono", wrap=True)
-        keys.add(self.keys_text)
-        self.key_label = label("Keyboard: idle", "caption")
-        keys.add(self.key_label)
-        root.addWidget(keys)
+        self.drive = DrivePanel(keymap)
+        self.drive.pad_pressed.connect(self.pad_pressed)
+        self.drive.pad_released.connect(self.pad_released)
+        self.drive.grip_pressed.connect(self.grip_pressed)
+        self.pad_buttons = self.drive.pad_buttons
+        self.grip_btn = self.drive.grip_btn
+        self.key_label = self.drive.key_label
+        root.addWidget(self.drive)
         root.addStretch(1)
-
-    def set_key_labels(self, keymap, pad_names: dict):
-        """Show the current key assignments on the pad buttons and in the reference card."""
-        for motion, b in self.pad_buttons.items():
-            action = pad_names.get(motion)
-            keys = keymap.label_for(action).split(" / ")[0] if action else ""   # first key only: the pad stays compact
-            b.setText(f"{self.pad_texts[motion]}   ({keys})" if keys and keys != "—" else self.pad_texts[motion])
-        self.grip_btn.setText(f"Toggle gripper   ({keymap.label_for('gripper_toggle').split(' / ')[0]})")
-        self.keys_text.setText("\n".join(f"{a.label:<30} {keymap.label_for(a.id)}" for a in keymap.actions)
-                               + "\nSTOP                           Space / Esc")

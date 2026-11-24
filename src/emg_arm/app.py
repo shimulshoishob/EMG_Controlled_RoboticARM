@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import QApplication
 from .arm.driver import load_config
 from .settings import Settings
 from .ui import theme
-from .diagnostics_log import setup_file_logging
+from .app_log import setup_file_logging
 from .ui.main_window import MainWindow, console
 
 

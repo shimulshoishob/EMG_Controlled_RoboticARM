@@ -1,14 +1,15 @@
 """A software copy of the armband firmware (``emg-imu-2.0.0``), speaking the exact same protocol.
 
-Used for the in-app **Virtual armband** (try the whole app with no hardware) and by the tests,
-which can make it behave badly on purpose: lose replies, lose data, reboot, change its keepalive.
+Test helper only (the application itself has no demo mode). The tests use it to exercise the real
+link code without hardware, and it can make the "device" behave badly on purpose: lose replies,
+lose data, reboot, change its keepalive.
 
 It reproduces the firmware's rules, including the awkward ones:
 * a challenge belongs to one remote (IP, source port) and is single-use, 30 s lifetime, 4 slots;
 * ``START`` locks the stream target, ``STOP``/keepalive timeout (15 s) unlocks it;
 * ``PING`` does not re-lock a target after a reboot.
 
-Run it stand-alone:  ``python -m emg_arm.armband.fake --key <key>``
+Run it stand-alone:  ``python tests/fake_armband.py --key <key>``
 """
 
 from __future__ import annotations
@@ -19,14 +20,18 @@ import os
 import random
 import select
 import socket
+import sys
 import threading
 import time
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .protocol import (CONTROL_PORT, EMG_CHANNELS, FRAME_V2_DTYPE, FRAMES_PER_PACKET, MAGIC,
-                       SAMPLE_RATE_HZ, V2_HEADER, V2_PACKET_SIZE, encode_usb_frame, sign)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from emg_arm.armband.protocol import (CONTROL_PORT, EMG_CHANNELS, FRAME_V2_DTYPE, FRAMES_PER_PACKET, MAGIC,  # noqa: E402
+                                      SAMPLE_RATE_HZ, V2_HEADER, V2_PACKET_SIZE, encode_usb_frame, sign)
 
 FIRMWARE_VERSION = "emg-imu-2.0.0"
 CHALLENGE_SLOTS = 4

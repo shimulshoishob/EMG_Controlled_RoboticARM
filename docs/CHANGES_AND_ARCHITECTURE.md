@@ -66,8 +66,8 @@ keyboard (KeyboardController + KeyMap) ─────────────�
 `control/*` and `arm/teleop.py` contain no Qt and no hardware access, so the whole decision chain is unit-tested without hardware.
 Hardware access stays in `arm/driver.py`; GUI code never talks to USB/UDP directly.
 
-Navigation: Dashboard · Gesture model · Connection · Robotic arm · Arm control · Live monitor · Gesture mapping · Keyboard ·
-Logs & diagnostics · Settings & data. Visual identity (theme, cards, banners, chips) is unchanged.
+Navigation (simplified): Arm control (arm connection + keyboard mapping merged) · Gesture model · Armband · Live monitor ·
+Gesture mapping · Settings & data. The Dashboard, Logs & diagnostics, Keyboard and Robotic-arm pages and the virtual armband were removed. Visual identity (theme, cards, banners, chips) is unchanged.
 
 ## 3. Base-servo jitter: investigation and result
 

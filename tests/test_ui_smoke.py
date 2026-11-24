@@ -1,4 +1,4 @@
-"""Boots the real window headless (offscreen Qt) and runs the virtual armband through it.
+"""Boots the real window headless (offscreen Qt) and runs a software copy of the armband (tests/fake_armband.py) through it.
 
     python -m unittest tests.test_ui_smoke -v
 """
@@ -12,6 +12,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from PyQt5.QtWidgets import QApplication  # noqa: E402
 
@@ -20,6 +21,7 @@ from emg_arm.armband.link import LinkState  # noqa: E402
 from emg_arm.settings import Settings  # noqa: E402
 from emg_arm.ui import theme  # noqa: E402
 from emg_arm.ui.main_window import PAGES, MainWindow  # noqa: E402
+from fake_armband import FakeArmband  # noqa: E402
 
 APP = QApplication.instance() or QApplication([])
 
@@ -50,10 +52,12 @@ class WindowSmokeTests(unittest.TestCase):
                 pump(0.05)
                 self.assertTrue(self.window.stack.currentWidget().isVisible())
 
-    def test_virtual_armband_streams_through_the_window(self):
+    def test_armband_streams_through_the_window(self):
+        dev = FakeArmband("k" * 40, bind_ip="127.0.0.1").start()
+        self.addCleanup(dev.stop)
         page = self.window.pages["armband"]
-        page.mode.set_current("virtual")
-        page._mode_changed("virtual")
+        page.ip_edit.setText("127.0.0.1")
+        page.key_edit.setText("k" * 40)
         page.toggle_connection()
         end = time.time() + 8
         while time.time() < end and self.window.link_state != LinkState.STREAMING:
@@ -71,7 +75,6 @@ class WindowSmokeTests(unittest.TestCase):
         self.assertFalse(self.window.bridge.active)
 
     def test_wrong_key_shows_actionable_message_and_cleans_up(self):
-        from emg_arm.armband.fake import FakeArmband
         dev = FakeArmband("k" * 40).start()
         self.addCleanup(dev.stop)
         page = self.window.pages["armband"]
@@ -113,6 +116,24 @@ class WindowSmokeTests(unittest.TestCase):
         self.assertIn("LEFT", cp.action_label.text() + "LEFT")   # label updates while held
         w.emergency_stop("test")
         self.assertFalse(cp.pad_buttons["left"].isEnabled())
+
+    def test_navigation_has_no_removed_pages_and_opens_on_arm_control(self):
+        keys = [p[0] for p in PAGES]
+        for gone in ("dashboard", "diagnostics", "keyboard", "arm"):
+            self.assertNotIn(gone, keys)
+        self.assertEqual(keys[0], "control")
+        self.assertEqual(self.window.current_key, "control")
+
+    def test_arm_card_and_key_table_are_on_the_control_page(self):
+        cp = self.window.pages["control"]
+        self.assertIs(self.window.pages["arm"], cp.arm_page)
+        self.assertIs(self.window.pages["keyboard"], cp.drive)
+        self.assertIn("left", cp.pad_buttons)
+        self.assertIn("base_left", cp.drive.buttons)
+
+    def test_connection_page_offers_only_real_hardware(self):
+        page = self.window.pages["armband"]
+        self.assertEqual(set(page.mode_pages), {"wifi", "usb"})
 
     def test_pad_is_disabled_until_armed(self):
         self.assertFalse(self.window.pages["control"].pad_buttons["up"].isEnabled())

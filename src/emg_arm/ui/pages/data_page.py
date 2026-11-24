@@ -1,4 +1,4 @@
-"""Settings & data: motion smoothing, calibration, configuration files, recording, logs, appearance."""
+"""Settings & data: appearance, configuration files, raw-signal recording, arm calibration, advanced motion tuning."""
 
 from __future__ import annotations
 
@@ -10,8 +10,7 @@ from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLineEdit, QSpinBox, QVBoxLayout,
                              QWidget)
 
-from ... import __version__
-from ...paths import LOG_DIR, RECORDINGS_DIR, user_settings_dir
+from ...paths import RECORDINGS_DIR
 from ..widgets import Banner, Card, button, label
 
 # key -> (label, min, max, step, suffix, default-from-config)
@@ -47,32 +46,40 @@ class DataPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(16)
 
-        # ---------------------------------------------------------------- smoothing
-        c = Card("Motion smoothing", "Reduces vibration of the base servo. Changes apply immediately, even while connected. "
-                 "If the base still buzzes at low speed, raise Minimum speed and Minimum lead; if it feels sluggish, lower Lookahead.")
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(14)
-        self.tuning: Dict[str, QDoubleSpinBox] = {}
-        for r, (key, (text, lo, hi, step, suffix, _)) in enumerate(TUNING_FIELDS.items()):
-            grid.addWidget(label(text, "muted"), r // 2, (r % 2) * 2)
-            w = QDoubleSpinBox()
-            w.setRange(lo, hi)
-            w.setSingleStep(step)
-            w.setDecimals(2 if step < 1 else 0)
-            w.setSuffix(suffix)
-            w.editingFinished.connect(w.clearFocus)
-            self.tuning[key] = w
-            grid.addWidget(w, r // 2, (r % 2) * 2 + 1)
-        c.add(grid)
+        c3 = Card("Appearance")
+        self.theme_combo = QComboBox()
+        for key, text in (("auto", "Match my system"), ("light", "Light"), ("dark", "Dark"), ("pink", "Pink")):
+            self.theme_combo.addItem(text, key)
+        self.theme_combo.setCurrentIndex(max(0, self.theme_combo.findData(theme_mode)))
+        self.theme_combo.currentIndexChanged.connect(lambda _i: self.theme_changed.emit(self.theme_combo.currentData()))
+        c3.add(self.theme_combo)
+        root.addWidget(c3)
+        # --------------------------------------------------------------- config files
+        f = Card("Configuration file", "Gesture mapping, keyboard shortcuts, smoothing and calibration in one file, "
+                 "for backup or to move to another computer (macOS ↔ Windows).")
+        frow = QHBoxLayout()
+        frow.addWidget(button("Export configuration…", slot=self.export_requested.emit))
+        frow.addWidget(button("Import configuration…", slot=self.import_requested.emit))
+        frow.addStretch(1)
+        f.add(frow)
+        self.config_note = label("", "caption", wrap=True)
+        f.add(self.config_note)
+        root.addWidget(f)
+
+        # ---------------------------------------------------------------- recording
+        c1 = Card("Record raw signals", "Saves every EMG sample (8 channels, 500 Hz) and the IMU angles to a CSV "
+                  "file, ready for your analysis. The armband must be connected.")
         row = QHBoxLayout()
-        row.addWidget(button("Apply smoothing", "primary", slot=self._apply_tuning))
-        row.addWidget(button("Restore defaults", "ghost", slot=self._reset_tuning))
-        row.addStretch(1)
-        c.add(row)
-        self.tuning_note = label("", "caption", wrap=True)
-        c.add(self.tuning_note)
-        self.load_tuning()
-        root.addWidget(c)
+        self.label_edit = QLineEdit()
+        self.label_edit.setPlaceholderText("optional label, e.g. S02_fist_trial3")
+        row.addWidget(self.label_edit, 1)
+        self.record_btn = button("Start recording", "primary", slot=self._toggle)
+        row.addWidget(self.record_btn)
+        c1.add(row)
+        self.record_status = Banner("Not recording.", "none")
+        c1.add(self.record_status)
+        c1.add(button("Open recordings folder", slot=lambda: open_folder(RECORDINGS_DIR)))
+        root.addWidget(c1)
 
         # -------------------------------------------------------------- calibration
         cal = Card("Calibration: servo range and rest position",
@@ -117,50 +124,39 @@ class DataPage(QWidget):
         self.load_calibration()
         root.addWidget(cal)
 
-        # --------------------------------------------------------------- config files
-        f = Card("Configuration", "Gesture mapping, keyboard shortcuts, smoothing and calibration in one file, "
-                 "for backup or to move to another computer (macOS ↔ Windows).")
-        frow = QHBoxLayout()
-        frow.addWidget(button("Export configuration…", slot=self.export_requested.emit))
-        frow.addWidget(button("Import configuration…", slot=self.import_requested.emit))
-        frow.addWidget(button("Open settings folder", "ghost", slot=lambda: open_folder(user_settings_dir())))
-        frow.addStretch(1)
-        f.add(frow)
-        self.config_note = label("", "caption", wrap=True)
-        f.add(self.config_note)
-        root.addWidget(f)
-
-        # ---------------------------------------------------------------- recording
-        c1 = Card("Record raw signals", "Saves every EMG sample (8 channels, 500 Hz) and the IMU angles to a CSV "
-                  "file, ready for your analysis. The armband must be connected.")
+        # ---------------------------------------------------------------- smoothing
+        c = Card("Advanced: motion smoothing", "Reduces vibration of the base servo. Changes apply immediately, even while connected. "
+                 "If the base still buzzes at low speed, raise Minimum speed and Minimum lead; if it feels sluggish, lower Lookahead.")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(14)
+        self.tuning: Dict[str, QDoubleSpinBox] = {}
+        for r, (key, (text, lo, hi, step, suffix, _)) in enumerate(TUNING_FIELDS.items()):
+            grid.addWidget(label(text, "muted"), r // 2, (r % 2) * 2)
+            w = QDoubleSpinBox()
+            w.setRange(lo, hi)
+            w.setSingleStep(step)
+            w.setDecimals(2 if step < 1 else 0)
+            w.setSuffix(suffix)
+            w.editingFinished.connect(w.clearFocus)
+            self.tuning[key] = w
+            grid.addWidget(w, r // 2, (r % 2) * 2 + 1)
+        c.add(grid)
         row = QHBoxLayout()
-        self.label_edit = QLineEdit()
-        self.label_edit.setPlaceholderText("optional label, e.g. S02_fist_trial3")
-        row.addWidget(self.label_edit, 1)
-        self.record_btn = button("Start recording", "primary", slot=self._toggle)
-        row.addWidget(self.record_btn)
-        c1.add(row)
-        self.record_status = Banner("Not recording.", "none")
-        c1.add(self.record_status)
-        c1.add(button("Open recordings folder", slot=lambda: open_folder(RECORDINGS_DIR)))
-        root.addWidget(c1)
+        row.addWidget(button("Apply smoothing", "primary", slot=self._apply_tuning))
+        row.addWidget(button("Restore defaults", "ghost", slot=self._reset_tuning))
+        row.addStretch(1)
+        c.add(row)
+        self.tuning_note = label("", "caption", wrap=True)
+        c.add(self.tuning_note)
+        self.load_tuning()
+        adv = button("Show advanced motion smoothing", "ghost")
+        adv.setCheckable(True)
+        adv.toggled.connect(lambda on: (c.setVisible(on), adv.setText("Hide advanced motion smoothing" if on
+                                                                     else "Show advanced motion smoothing")))
+        c.setVisible(False)
+        root.addWidget(adv)
+        root.addWidget(c)
 
-        c2 = Card("Session logs", "Each time the arm is connected, a log of predictions, gestures, and servo targets "
-                  "is written (one row per event).")
-        self.log_label = label("No session yet.", "mono", wrap=True)
-        c2.add(self.log_label)
-        c2.add(button("Open logs folder", slot=lambda: open_folder(LOG_DIR)))
-        root.addWidget(c2)
-
-        c3 = Card("Appearance")
-        self.theme_combo = QComboBox()
-        for key, text in (("auto", "Match my system"), ("light", "Light"), ("dark", "Dark"), ("pink", "Pink")):
-            self.theme_combo.addItem(text, key)
-        self.theme_combo.setCurrentIndex(max(0, self.theme_combo.findData(theme_mode)))
-        self.theme_combo.currentIndexChanged.connect(lambda _i: self.theme_changed.emit(self.theme_combo.currentData()))
-        c3.add(self.theme_combo)
-        root.addWidget(c3)
-        root.addWidget(label(f"EMG Robotic Arm {__version__}  ·  armband firmware emg-imu-2.x  ·  protocol BWIM v2", "caption"))
         root.addStretch(1)
 
     # ------------------------------------------------------------------ smoothing
@@ -247,6 +243,3 @@ class DataPage(QWidget):
             self.record_status.set(f"Saved {frames:,} samples to {path}", "good")
         else:
             self.record_status.set("Not recording.", "none")
-
-    def set_log(self, path: str):
-        self.log_label.setText(path or "No session yet.")

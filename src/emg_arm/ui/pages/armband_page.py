@@ -40,16 +40,14 @@ class ArmbandPage(QWidget):
 
         # ---- how are you connecting?
         mode_card = Card("How do you want to connect?",
-                         "Wi-Fi is wireless and safest for the person wearing the electrodes. USB is a good fallback. "
-                         "The virtual armband lets you try everything with no hardware.")
-        self.mode = Segmented([("wifi", "Wi-Fi (recommended)"), ("usb", "USB cable"), ("virtual", "Virtual armband (demo)")])
+                         "Wi-Fi is wireless and safest for the person wearing the electrodes. USB is a good fallback.")
+        self.mode = Segmented([("wifi", "Wi-Fi (recommended)"), ("usb", "USB cable")])
         self.mode.changed.connect(self._mode_changed)
         mode_card.add(self.mode)
         root.addWidget(mode_card)
 
         # Only the chosen mode's cards are shown (a QStackedWidget would reserve the tallest page's height).
-        self.mode_pages = {"wifi": self._build_wifi(), "usb": self._top(self._build_usb(), stretch=False),
-                           "virtual": self._top(self._build_virtual(), stretch=False)}
+        self.mode_pages = {"wifi": self._build_wifi(), "usb": self._top(self._build_usb(), stretch=False)}
         for page in self.mode_pages.values():
             root.addWidget(page)
 
@@ -57,7 +55,7 @@ class ArmbandPage(QWidget):
         root.addWidget(self._build_health())
         root.addStretch(1)
 
-        self.mode.set_current(settings.get("connection") if settings.get("connection") in ("wifi", "usb", "virtual") else "wifi")
+        self.mode.set_current(settings.get("connection") if settings.get("connection") in ("wifi", "usb") else "wifi")
         self._mode_changed(self.mode.current())
         bridge.state.connect(self.on_state)
         bridge.stats.connect(self.on_stats)
@@ -146,13 +144,6 @@ class ArmbandPage(QWidget):
         self.refresh_ports()
         return c
 
-    def _build_virtual(self) -> QWidget:
-        c = Card("Virtual armband", "A software copy of the armband runs inside this app and sends realistic EMG "
-                 "and IMU data over the same network protocol.", step=1)
-        c.add(label("Use it to learn the app, to test the arm in simulation, or when the hardware is not at hand. "
-                    "It will not produce real gestures, so the model will mostly say Rest.", "muted", wrap=True))
-        return c
-
     def _build_connect(self) -> Card:
         c = Card("Connect and check the signal", "", step=4)
         self.connect_card = c
@@ -177,15 +168,12 @@ class ArmbandPage(QWidget):
         self.stat_rate = Stat("frames / second  (target 500)")
         self.stat_loss = Stat("packets lost")
         self.stat_age = Stat("since last data")
-        self.stat_fw = Stat("armband warnings")
-        for s in (self.stat_rate, self.stat_loss, self.stat_age, self.stat_fw):
+        for s in (self.stat_rate, self.stat_loss, self.stat_age):
             row.addWidget(s)
         row.addStretch(1)
         c.add(row)
         self.scope = SignalScope()
         c.add(self.scope)
-        self.detail = label("", "caption", wrap=True)
-        c.add(self.detail)
         return c
 
     # ================================================================ lifecycle
@@ -375,8 +363,6 @@ class ArmbandPage(QWidget):
                 return
             self.settings.set("usb_port", port)
             self.bridge.connect_usb(port)
-        else:
-            self.bridge.connect_virtual()
         self.banner.set("Connecting…", "accent")
         self._update_buttons()
 
@@ -408,10 +394,3 @@ class ArmbandPage(QWidget):
         self.stat_loss.set(f"{s.loss_percent:.1f} %", "good" if s.loss_percent < 1 else "warn" if s.loss_percent < 5 else "bad")
         age = s.last_rx_age_s
         self.stat_age.set("-" if age == float("inf") else f"{age * 1000:.0f} ms", "good" if age < 0.5 else "warn")
-        warnings = s.fw_queue_drops + s.fw_acq_overruns + s.fw_send_failures
-        self.stat_fw.set(str(warnings), "good" if warnings == 0 else "warn")
-        where = f"{s.transport}  {s.device_ip}" + (f"  ·  data port {s.stream_port}" if s.stream_port else "")
-        self.detail.setText(
-            f"{where}   |   packets {s.total_packets}   ·   lost {s.lost_packets}   ·   bad {s.bad_packets}   ·   "
-            f"armband counters: queue drops {s.fw_queue_drops}, late samples {s.fw_acq_overruns}, send failures "
-            f"{s.fw_send_failures}, Wi-Fi reconnects {s.fw_wifi_reconnects}")

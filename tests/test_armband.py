@@ -14,9 +14,10 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from emg_arm.armband import control, protocol as P  # noqa: E402
-from emg_arm.armband.fake import FakeArmband, FakeUsbDevice, SignalSource, build_packet  # noqa: E402
+from fake_armband import FakeArmband, FakeUsbDevice, SignalSource, build_packet  # noqa: E402
 from emg_arm.armband.link import LinkState, UsbLink, WifiLink  # noqa: E402
 
 KEY = "b6807509df72ab2088ba4945138391657aa2d6c61b5f7397"

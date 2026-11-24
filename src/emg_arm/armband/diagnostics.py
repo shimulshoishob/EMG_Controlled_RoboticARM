@@ -62,10 +62,7 @@ def run_checks(device_ip: str, key: str, progress: Optional[Callable[[Check], No
         return results
 
     # 3. same network ----------------------------------------------------------------------
-    loopback = device_ip.startswith("127.")
-    if loopback:
-        add("Same network", OK, "Virtual armband on this computer.")
-    elif netinfo.same_subnet(device_ip, interfaces):
+    if netinfo.same_subnet(device_ip, interfaces):
         iface = netinfo.interface_for(device_ip, interfaces)
         add("Same network", OK, f"{device_ip} is on {iface.name} ({iface.cidr}).")
     else:

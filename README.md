@@ -18,16 +18,12 @@ The first run creates `.venv` and installs `requirements.txt` (a few minutes, ne
 
 | Group | Section | What it is for |
 |---|---|---|
-| Overview | **Dashboard** | Armband / ESP32-S3 link, incoming data, model, detected gesture, arm, control mode, current movement, error count, recent warnings |
-| Setup | **Gesture model** | Pick the trained `.joblib`; shows how each model class is recognised as one of the ten gestures |
-| Setup | **Connection** | Armband over Wi-Fi, USB or the virtual armband (four cards, *Connection doctor*) |
-| Setup | **Robotic arm** | Connect the xArm 1S (or simulate it), *Go home*, gripper test |
-| Operate | **Arm control** | *ARM*, control mode (keys + gestures / gestures only / keyboard only), speed, global confidence, on-screen pad, key reference |
-| Operate | **Live monitor** | 8-channel EMG, model output, confidence, stable gesture, transition history, signal→prediction latency |
-| Operate | **Gesture mapping** | What each of the ten gestures does (see below) |
-| Operate | **Keyboard** | Key tester, re-assign keys, reset |
-| System | **Logs & diagnostics** | Packet rate / loss / age, firmware counters, event log, error history, save/copy log |
-| System | **Settings & data** | Motion smoothing, calibration (servo range, rest pose), export/import configuration, raw recording, session logs, theme |
+| Robotic arm | **Arm control** (opens first) | One page: connect the xArm 1S (or simulate it) and *Go home* · *ARM* · control mode (keys + gestures / gestures only / keyboard only), speed, global confidence · live servo positions · one table with every movement's on-screen button and its keyboard shortcuts (click a key to re-assign it) |
+| EMG & model | **Gesture model** | Pick the trained `.joblib`; shows how each model class is recognised as one of the ten gestures |
+| EMG & model | **Armband** | Connect the real armband over Wi-Fi or USB (four cards, *Connection doctor*, live signal) |
+| EMG & model | **Live monitor** | 8-channel EMG, model output, confidence, stable gesture, transition history |
+| EMG & model | **Gesture mapping** | What each of the ten gestures does (see below) |
+| Settings | **Settings & data** | Theme, export/import configuration, raw-signal recording, servo calibration (range, rest pose), advanced motion smoothing (hidden until you ask) |
 
 The red **STOP** button (Space / Esc) is on every page and always works.
 
@@ -81,16 +77,16 @@ run.py                      launcher (sets up .venv)
 config/arm_config.json      limits, home pose, gesture map, filter settings
 firmware/                   armband firmware (+ secrets.example.h; never commit secrets.h)
 src/emg_arm/
-  armband/  protocol · control · netinfo · link · serial_setup · diagnostics · fake (firmware emulator)
+  armband/  protocol · control · netinfo · link · serial_setup · diagnostics (connection doctor)
   arm/      driver · motion · teleop       (safety layer, smooth streaming, gesture filter)
   control/  gestures · mapping · commands  (ten gestures, central mapping store, gesture -> command generator; no Qt)
   ml/       features · inference
   ui/       theme · widgets · bridge · dialogs · keyboard · main_window · pages/
-  session.py settings.py config_bundle.py diagnostics_log.py paths.py bootstrap.py app.py
+  session.py settings.py config_bundle.py app_log.py paths.py bootstrap.py app.py
 tools/check_arm.py          read-only hardware check / nudge / glide
 tools/jitter_report.py      software-side base-servo jitter measurement (old vs new streaming)
 tools/native_key_check.py   macOS: injects real OS key events into the real window (see docs; unverified in CI)
-tests/                      149 tests, no hardware needed
+tests/                      no hardware needed (tests/fake_armband.py is a software copy of the armband firmware)
 ```
 
 ## Tests
@@ -98,7 +94,7 @@ tests/                      149 tests, no hardware needed
 ```bash
 python -m unittest discover tests
 ```
-Includes a software copy of the firmware (`armband/fake.py`) that can lose replies and data, reboot and go silent, a USB test over a pseudo-terminal, and a headless run of the real window. Run the emulator on its own with `python -m emg_arm.armband.fake --key <key>`.
+Includes a software copy of the firmware (`tests/fake_armband.py`, test-only: the app has no demo mode) that can lose replies and data, reboot and go silent, a USB test over a pseudo-terminal, and a headless run of the real window. Run the emulator on its own with `python tests/fake_armband.py --key <key>`.
 
 ## Troubleshooting (or press *Connection doctor*)
 

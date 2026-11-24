@@ -1,4 +1,4 @@
-"""Window-level integration: mapping UI + persistence, safety on link/arm failure, diagnostics, config files.
+"""Window-level integration: mapping UI + persistence, safety on link/arm failure, config files.
 
     python -m unittest tests.test_integration -v
 """
@@ -64,21 +64,12 @@ class IntegrationBase(unittest.TestCase):
 class NavigationTests(IntegrationBase):
     def test_all_sections_exist_and_open(self):
         w = self.make_window()
-        wanted = {"dashboard", "model", "armband", "arm", "control", "monitor", "mapping", "keyboard", "diagnostics", "data"}
+        wanted = {"control", "model", "armband", "monitor", "mapping", "data"}
         self.assertEqual({p[0] for p in PAGES}, wanted)
         for key, *_ in PAGES:
             w.go_to(key)
             pump(0.05)
             self.assertTrue(w.stack.currentWidget().isVisible(), key)
-
-    def test_dashboard_reports_every_required_status(self):
-        w = self.make_window()
-        w.refresh_dashboard()
-        tiles = w.pages["dashboard"].tiles
-        for key in ("armband", "data", "model", "gesture", "arm", "mode", "movement", "health"):
-            self.assertIn(key, tiles)
-        self.assertEqual(tiles["armband"].value.text(), "Idle")
-        self.assertEqual(tiles["mode"].value.text(), "DISARMED")
 
 
 class MappingUiTests(IntegrationBase):
@@ -145,12 +136,13 @@ class SafetyTests(IntegrationBase):
         now = time.monotonic()
         for i in range(8):
             w.gesture_filter.add_prediction("Left", 0.95, now + i * 0.05)
-        w.on_link_state(LinkState.STALLED.value, "no data")
+        with self.assertLogs("emg_arm", "WARNING") as logged:
+            w.on_link_state(LinkState.STALLED.value, "no data")
+        self.assertTrue(any("stalled" in line for line in logged.output))
         self.assertIsNone(w.gesture_filter.stable, "stale gesture must be forgotten when the link drops")
         before = dict(w.arm.targets)
         pump(0.6)
         self.assertEqual(w.arm.targets, before, "arm must not move after the link drops")
-        self.assertTrue(any("stalled" in e.message for e in w.diag.recent(20, "warning")))
 
     def test_arm_communication_failure_stops_and_is_logged(self):
         w = self.make_window()
@@ -161,12 +153,12 @@ class SafetyTests(IntegrationBase):
         orig = QMessageBox.critical
         QMessageBox.critical = staticmethod(lambda *a, **k: None)
         self.addCleanup(setattr, QMessageBox, "critical", orig)
-        for _ in range(40):
-            pump(0.05)
-            if not w.is_armed():
-                break
+        with self.assertLogs("emg_arm", "ERROR"):          # recorded in the background log
+            for _ in range(40):
+                pump(0.05)
+                if not w.is_armed():
+                    break
         self.assertFalse(w.is_armed(), "a lost arm connection must disarm")
-        self.assertTrue(w.diag.errors(), "and be recorded as an error")
 
     def test_gesture_mode_ignores_keyboard_but_stop_works(self):
         w = self.make_window()
@@ -202,17 +194,6 @@ class ConfigFileTests(IntegrationBase):
         with self.assertRaises(ValueError):
             import_bundle(bad, w.mapping, w.keymap, w.settings)
         self.assertEqual(w.mapping.mappings["left"].servo, 6)
-
-
-class DiagnosticsTests(IntegrationBase):
-    def test_link_state_changes_and_errors_reach_the_log(self):
-        w = self.make_window()
-        w.on_link_state(LinkState.CONNECTING.value, "")
-        w.on_link_state(LinkState.FAILED.value, "The access key does not match")
-        pump(0.4)
-        text = w.pages["diagnostics"].view.toPlainText()
-        self.assertIn("connecting → failed", text)
-        self.assertIn("access key", w.pages["diagnostics"].errors.toPlainText())
 
 
 if __name__ == "__main__":
