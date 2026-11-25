@@ -18,24 +18,28 @@ class ArmPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
 
-        card = Card("Connect the arm", "Power the xArm 1S from its own 7.5 V supply; USB is only for data. Close any other "
-                    "program that controls the arm. When you connect, the arm moves slowly to its home pose by itself, "
-                    "so keep everyone out of its reach.", step=1)
+        card = Card("Connect the arm", "Use its 7.5 V supply. It then moves home by itself: keep clear.", step=1)
+        card.setToolTip("Power the xArm 1S from its own 7.5 V supply; USB is only for data. Close any other program that "
+                        "controls the arm. After connecting, the arm moves slowly to its home pose.")
         self.card = card
+        top = QHBoxLayout()
+        top.setSpacing(10)
         self.connect_btn = button("Connect arm", "success", slot=self.connect_toggled.emit)
-        card.header_right.addWidget(self.connect_btn)
+        self.connect_btn.setMinimumWidth(130)
+        top.addWidget(self.connect_btn)
         self.simulate = QCheckBox("Simulate the arm (no hardware)")
         self.simulate.setChecked(simulate_default)
-        card.add(self.simulate)
+        top.addWidget(self.simulate)
+        top.addStretch(1)
+        card.add(top)
         self.banner = Banner("Arm not connected.", "none")
         card.add(self.banner)
         row = QHBoxLayout()
-        self.home_btn = button("Go home again (slow)", "primary", slot=self.home_requested.emit)
+        self.home_btn = button("Go home again (slow)", slot=self.home_requested.emit)
         self.grip_btn = button("Open gripper", slot=self._grip_clicked)
         self._gripper_closed = None
         for b in (self.home_btn, self.grip_btn):
-            row.addWidget(b)
-        row.addStretch(1)
+            row.addWidget(b, 1)
         card.add(row)
         root.addWidget(card)
 

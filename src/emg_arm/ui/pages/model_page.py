@@ -5,14 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (QFileDialog, QHBoxLayout, QHeaderView, QListWidget, QListWidgetItem, QTableWidget,
-                             QTableWidgetItem, QVBoxLayout, QWidget, QAbstractItemView)
+from PyQt5.QtWidgets import (QFileDialog, QHBoxLayout, QHeaderView, QListWidget, QListWidgetItem, QSizePolicy,
+                             QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QAbstractItemView)
 
 from ...ml.inference import LoadedModel
 from ...paths import MODELS_DIR, PROJECT_ROOT
 from ...control.commands import CommandGenerator
 from ...control.gestures import BY_ID
-from ..widgets import Banner, Card, button, label
+from .. import theme
+from ..widgets import Banner, Card, button, label, two_columns
 
 
 class ModelPage(QWidget):
@@ -23,44 +24,51 @@ class ModelPage(QWidget):
         self.settings, self.store, self.servo_names = settings, store, servo_names
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(16)
+        columns, left, right = two_columns(3, 5)
+        root.addLayout(columns, 1)
 
         c1 = Card("Choose your trained model",
-                  "The model turns the EMG signal into gestures. Use one trained on recordings of the person who "
-                  "will wear the armband, with the armband in the same position.", step=1)
-        self.use_btn = button("Use selected model", "primary", slot=self._use_selected)
-        c1.header_right.addWidget(self.use_btn)
+                  "Use one trained on the person who will wear the armband, with the armband in the same position.",
+                  step=1, fill=True)
         self.list = QListWidget()
-        self.list.setMinimumHeight(170)
-        self.list.setMaximumHeight(240)
+        self.list.setMinimumHeight(120)
+        self.list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list.setTextElideMode(Qt.ElideMiddle)             # keeps both ends of a long folder path readable
         self.list.itemDoubleClicked.connect(lambda _i: self._use_selected())
-        c1.add(self.list)
+        c1.add(self.list, 1)
         row = QHBoxLayout()
         row.addWidget(button("Upload .joblib files…", slot=self._upload))
         row.addWidget(button("Clear uploaded files", "ghost",
                              "Empties this list. The files themselves stay on your computer.", slot=self._clear))
         row.addStretch(1)
         c1.add(row)
+        self.use_btn = button("Use selected model", slot=self._use_selected)
+        self.use_btn.setProperty("big", True)
+        theme.set_role(self.use_btn, "primary")
+        self.use_btn.setMinimumHeight(40)
+        c1.add(self.use_btn)
         self.status = Banner("No model loaded yet.", "none")
         c1.add(self.status)
         self.card_pick = c1
-        root.addWidget(c1)
+        left.addWidget(c1, 1)
 
-        c2 = Card("What each gesture does", "Class names come from the model and are matched to the ten study gestures; "
-                  "what each gesture does is set under Gesture mapping.")
+        c2 = Card("What each gesture does", "Model classes matched to the ten study gestures. Change the actions under "
+                  "Gesture mapping.", fill=True)
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Class in the model", "Recognised as", "Training windows", "Robot action"])
+        self.table.setHorizontalHeaderLabels(["Model class", "Recognised as", "Training\nwindows", "Robot action"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.table.verticalHeader().hide()
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)   # long actions wrap in full
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.NoSelection)
         self.table.setMinimumHeight(190)
-        c2.add(self.table)
-        root.addWidget(c2)
-        root.addStretch(1)
+        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+        c2.add(self.table, 1)
+        right.addWidget(c2, 1)
         self.refresh()
 
     def refresh(self, select: str = ""):

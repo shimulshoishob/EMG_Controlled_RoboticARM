@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QGridLayout, QPushButton
 
 from .. import theme
 from ..keyboard import MODIFIER_KEYS, KeyMap, pretty_key
-from ..widgets import Banner, Card, button, label
+from ..widgets import Banner, Card, button, label, section, two_columns
 
 # on-screen button (motion name used by the control loop) -> keyboard action id
 PAD_ACTIONS = {"left": "base_left", "right": "base_right", "up": "joint_up", "down": "joint_down",
@@ -28,7 +28,8 @@ class KeyCapture(QPushButton):
 
     def __init__(self, parent=None):
         super().__init__("—", parent)
-        self.setMinimumWidth(84)
+        self.setMinimumWidth(62)
+        self.setProperty("compact", True)
         self.setCursor(Qt.PointingHandCursor)
         self.key = 0
         self._waiting = False
@@ -93,32 +94,47 @@ class DrivePanel(Card):
         self.pad_buttons = {}
         self.grip_btn = None
         motion_for = {action: motion for motion, action in PAD_ACTIONS.items()}
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(6)
-        for c, text in enumerate(("Movement", "Button", "Key", "Alternative key")):
-            grid.addWidget(label(text, "caption"), 0, c)
         groups = {}
         for action in keymap.actions:                   # keep first-seen group order, actions together
             groups.setdefault(action.group, []).append(action)
+        columns, left, right = two_columns(1, 1)
+        columns.setSpacing(18)
+        grids, rows = [], []
+        for column in (left, right):
+            grid = QGridLayout()
+            grid.setHorizontalSpacing(6)
+            grid.setVerticalSpacing(6)
+            for c, text in enumerate(("Movement", "Button", "Key", "Alt. key")):
+                grid.addWidget(label(text, "caption"), 0, c)
+            grid.setColumnStretch(0, 1)
+            column.addLayout(grid)
+            column.addStretch(1)
+            grids.append(grid)
+            rows.append(1)
+        total = len(keymap.actions) + len(groups)
         self.buttons = {}
-        row = 1
+        side = 0
         for group, actions in groups.items():
-            grid.addWidget(label(group.upper(), "caption"), row, 0, 1, 4)
+            if side == 0 and rows[0] > 1 and rows[0] + len(actions) > (total + 1) // 2 + 1:
+                side = 1                                # the first column is full: continue in the second
+            grid, row = grids[side], rows[side]
+            grid.addWidget(section(group), row, 0, 1, 4)
             row += 1
             for action in actions:
-                grid.addWidget(label(action.label), row, 0)
+                grid.addWidget(label(action.label, wrap=True), row, 0)
                 if action.id in motion_for:
                     motion = motion_for[action.id]
                     b = button(_pad_text(motion))
-                    b.setMinimumHeight(34)
+                    b.setProperty("compact", True)
+                    b.setMinimumSize(70, 34)
                     b.pressed.connect(lambda m=motion: self.pad_pressed.emit(m))
                     b.released.connect(lambda m=motion: self.pad_released.emit(m))
                     grid.addWidget(b, row, 1)
                     self.pad_buttons[motion] = b
                 elif action.id == "gripper_toggle":
                     self.grip_btn = button("Toggle")
-                    self.grip_btn.setMinimumHeight(34)
+                    self.grip_btn.setProperty("compact", True)
+                    self.grip_btn.setMinimumSize(70, 34)
                     self.grip_btn.clicked.connect(self.grip_pressed.emit)
                     grid.addWidget(self.grip_btn, row, 1)
                 pair = []
@@ -131,11 +147,11 @@ class DrivePanel(Card):
                     pair.append(k)
                 self.buttons[action.id] = pair
                 row += 1
-        grid.setColumnStretch(0, 1)
-        self.add(grid)
+            rows[side] = row
+        self.add(columns)
         self.key_label = label("Keyboard: idle", "caption")
         self.add(self.key_label)
-        self.status = Banner("", "none")
+        self.status = Banner("", "none", hide_empty=True)
         self.add(self.status)
         self.set_pad_enabled(False)
         self.refresh()

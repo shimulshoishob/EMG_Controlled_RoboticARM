@@ -5,9 +5,10 @@ from __future__ import annotations
 import time
 from collections import deque
 
-from PyQt5.QtWidgets import QHBoxLayout, QListWidget, QProgressBar, QVBoxLayout, QWidget
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QHBoxLayout, QListWidget, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
 
-from ..widgets import Banner, Card, SignalScope, Stat, label
+from ..widgets import Banner, Card, SignalScope, Stat, label, two_columns
 
 
 class MonitorPage(QWidget):
@@ -15,41 +16,51 @@ class MonitorPage(QWidget):
         super().__init__(parent)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(16)
+        root.setSpacing(14)
 
-        g = Card("Gesture recognition", "What the model says right now, and what the filtered (stable) decision is.")
+        g = Card("Gesture recognition")
+        g.setToolTip("What the model says right now, and what the filtered (stable) decision is.")
         row = QHBoxLayout()
-        row.setSpacing(28)
+        row.setSpacing(10)
         self.raw = Stat("model output")
         self.conf = Stat("confidence")
         self.stable = Stat("stable gesture")
         self.latency = Stat("signal → prediction")
-        for s in (self.raw, self.conf, self.stable, self.latency):
-            row.addWidget(s)
-        row.addStretch(1)
+        for s, stretch in ((self.raw, 3), (self.conf, 2), (self.stable, 3), (self.latency, 2)):
+            row.addWidget(s, stretch)
         g.add(row)
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
-        self.bar.setFormat("confidence  %v %%")
-        g.add(self.bar)
-        self.threshold = label("", "caption")
-        g.add(self.threshold)
+        self.bar.setFormat("confidence  %v %")
         self.movement = Banner("Arm: no movement", "none")
-        g.add(self.movement)
+        self.movement.setMinimumWidth(240)
+        meter = QHBoxLayout()
+        meter.setSpacing(12)
+        meter.addWidget(self.bar, 1)
+        meter.addWidget(self.movement)
+        g.add(meter)
+        self.threshold = label("", "caption", wrap=True)
+        self.threshold.hide()                                # nothing to say until a threshold is set
+        g.add(self.threshold)
         root.addWidget(g)
 
-        s = Card("Live EMG", "Eight channels. At rest each line should be calm; squeeze and the matching channels swell.")
-        self.scope = SignalScope()
-        s.add(self.scope)
-        root.addWidget(s)
+        columns, left, right = two_columns(3, 2)
+        root.addLayout(columns, 1)
 
-        h = Card("Gesture transitions", "Newest first. One line each time the stable gesture changes.")
+        s = Card("Live EMG", "Eight channels: calm at rest, swelling when you squeeze.", fill=True)
+        self.scope = SignalScope()
+        s.add(self.scope, 1)
+        left.addWidget(s, 1)
+
+        h = Card("Gesture transitions", "Newest first, one line per change.", fill=True)
         self.history = QListWidget()
-        self.history.setMinimumHeight(200)
-        self.history.setMaximumHeight(260)
-        h.add(self.history)
-        root.addWidget(h)
-        root.addStretch(1)
+        self.history.setMinimumHeight(150)
+        self.history.setWordWrap(True)
+        self.history.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.history.setResizeMode(QListWidget.Adjust)
+        self.history.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+        h.add(self.history, 1)
+        right.addWidget(h, 1)
         self._last_stable = None
         self._latencies = deque(maxlen=50)
 
@@ -66,6 +77,7 @@ class MonitorPage(QWidget):
 
     def set_threshold(self, text: str):
         self.threshold.setText(text)
+        self.threshold.setVisible(bool(text))
 
     def on_prediction(self, label_text: str, confidence: float, accepted_gesture, latency_s: float):
         self.raw.set(label_text, "good" if accepted_gesture else "warn")

@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout
                              QWidget)
 
 from ...paths import RECORDINGS_DIR
-from ..widgets import Banner, Card, button, label
+from ..widgets import Banner, Card, button, label, two_columns
 
 # key -> (label, min, max, step, suffix, default-from-config)
 TUNING_FIELDS = {
@@ -43,34 +43,35 @@ class DataPage(QWidget):
         self.config, self.settings = config, settings
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(16)
+        columns, left, right = two_columns(2, 3)
+        root.addLayout(columns)
 
-        c3 = Card("Appearance")
+        c3 = Card("Appearance", "Colour theme of the whole app.")
         self.theme_combo = QComboBox()
         for key, text in (("auto", "Match my system"), ("light", "Light"), ("dark", "Dark"), ("pink", "Pink")):
             self.theme_combo.addItem(text, key)
         self.theme_combo.setCurrentIndex(max(0, self.theme_combo.findData(theme_mode)))
         self.theme_combo.currentIndexChanged.connect(lambda _i: self.theme_changed.emit(self.theme_combo.currentData()))
         c3.add(self.theme_combo)
-        root.addWidget(c3)
+        left.addWidget(c3)
         # --------------------------------------------------------------- config files
         f = Card("Configuration file", "Gesture mapping, keyboard shortcuts, smoothing and calibration in one file, "
                  "for backup or to move to another computer (macOS ↔ Windows).")
-        frow = QHBoxLayout()
+        frow = QVBoxLayout()
         frow.addWidget(button("Export configuration…", slot=self.export_requested.emit))
         frow.addWidget(button("Import configuration…", slot=self.import_requested.emit))
-        frow.addStretch(1)
         f.add(frow)
         self.config_note = label("", "caption", wrap=True)
         f.add(self.config_note)
-        root.addWidget(f)
+        left.addWidget(f)
 
         # -------------------------------------------------------------- calibration
         cal = Card("Calibration: servo range and rest position",
                    "Narrow a servo's travel or move the home (rest) pose. Values can never go outside the safe limits "
                    "verified in config/arm_config.json. Applies the next time the arm is connected.")
         g2 = QGridLayout()
-        g2.setHorizontalSpacing(14)
+        g2.setHorizontalSpacing(8)
+        g2.setColumnStretch(0, 1)
         for c_i, text in enumerate(("Servo", "Min", "Max", "Home / rest")):
             g2.addWidget(label(text, "caption"), 0, c_i)
         self.cal: Dict[int, tuple] = {}
@@ -103,16 +104,19 @@ class DataPage(QWidget):
         crow.addWidget(button("Restore shipped limits", "ghost", slot=self._reset_calibration))
         crow.addStretch(1)
         cal.add(crow)
-        self.cal_note = Banner("", "none")
+        self.cal_note = Banner("", "none", hide_empty=True)
         cal.add(self.cal_note)
         self.load_calibration()
-        root.addWidget(cal)
+        right.addWidget(cal)
+        right.addStretch(1)
 
         # ---------------------------------------------------------------- smoothing
         c = Card("Advanced: motion smoothing", "Reduces vibration of the base servo. Changes apply immediately, even while connected. "
                  "If the base still buzzes at low speed, raise Minimum speed and Minimum lead; if it feels sluggish, lower Lookahead.")
         grid = QGridLayout()
         grid.setHorizontalSpacing(14)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
         self.tuning: Dict[str, QDoubleSpinBox] = {}
         for r, (key, (text, lo, hi, step, suffix, _)) in enumerate(TUNING_FIELDS.items()):
             grid.addWidget(label(text, "muted"), r // 2, (r % 2) * 2)
@@ -138,7 +142,8 @@ class DataPage(QWidget):
         adv.toggled.connect(lambda on: (c.setVisible(on), adv.setText("Hide advanced motion smoothing" if on
                                                                      else "Show advanced motion smoothing")))
         c.setVisible(False)
-        root.addWidget(adv)
+        left.addStretch(1)
+        root.addWidget(adv)                                  # full width, under both columns
         root.addWidget(c)
 
         root.addStretch(1)
