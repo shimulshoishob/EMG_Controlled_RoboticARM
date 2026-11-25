@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import numpy as np
 from PyQt5.QtCore import QSize, Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
                              QVBoxLayout, QWidget)
 
@@ -20,6 +21,28 @@ def label(text: str = "", role: str = None, tone: str = None, wrap: bool = False
     if selectable:
         w.setTextInteractionFlags(Qt.TextSelectableByMouse)
     return w
+
+
+def section(text: str) -> QLabel:
+    """Small spaced-out capital heading that groups related controls."""
+    w = label(text.upper(), "section")
+    font = w.font()
+    font.setLetterSpacing(QFont.AbsoluteSpacing, 1.4)
+    w.setFont(font)
+    return w
+
+
+def two_columns(left: int = 1, right: int = 1):
+    """A row with two top-to-bottom columns: returns (row, left column, right column)."""
+    row = QHBoxLayout()
+    row.setSpacing(14)
+    columns = []
+    for stretch in (left, right):
+        col = QVBoxLayout()
+        col.setSpacing(14)
+        row.addLayout(col, stretch)
+        columns.append(col)
+    return row, columns[0], columns[1]
 
 
 def button(text: str, role: str = None, tooltip: str = "", slot=None) -> QPushButton:
@@ -36,7 +59,7 @@ def button(text: str, role: str = None, tooltip: str = "", slot=None) -> QPushBu
 class Dot(QLabel):
     def __init__(self, tone: str = None):
         super().__init__("")
-        self.setFixedSize(10, 10)
+        self.setFixedSize(8, 8)
         theme.set_role(self, "dot", tone or "none")
 
     def set_tone(self, tone: str):
@@ -55,20 +78,23 @@ class Chip(QLabel):
 
 
 class Card(QFrame):
-    """A rounded panel with an optional numbered badge, title and one-line explanation."""
+    """A rounded panel with an optional numbered badge, title and one-line explanation.
 
-    def __init__(self, title: str = "", subtitle: str = "", step: Optional[int] = None, parent=None):
+    ``fill=True`` lets the card grow to use the free height of the page (for lists, tables and plots)."""
+
+    def __init__(self, title: str = "", subtitle: str = "", step: Optional[int] = None, parent=None,
+                 fill: bool = False):
         super().__init__(parent)
         theme.set_role(self, "card", "none")
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding if fill else QSizePolicy.Maximum)
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(20, 18, 20, 18)
-        outer.setSpacing(12)
+        outer.setContentsMargins(16, 14, 16, 14)
+        outer.setSpacing(10)
         self.badge: Optional[QLabel] = None
         self._num = str(step) if step is not None else ""
         if title:
             head = QHBoxLayout()
-            head.setSpacing(12)
+            head.setSpacing(10)
             if step is not None:
                 self.badge = QLabel(str(step))
                 self.badge.setAlignment(Qt.AlignCenter)
@@ -86,20 +112,26 @@ class Card(QFrame):
             head.addLayout(self.header_right)
             outer.addLayout(head)
         self.body = QVBoxLayout()
-        self.body.setSpacing(10)
-        outer.addLayout(self.body)
+        self.body.setSpacing(8)
+        outer.addLayout(self.body, 1 if fill else 0)
 
-    def add(self, widget_or_layout):
+    def add(self, widget_or_layout, stretch: int = 0):
         if isinstance(widget_or_layout, QWidget):
-            self.body.addWidget(widget_or_layout)
+            self.body.addWidget(widget_or_layout, stretch)
         else:
-            self.body.addLayout(widget_or_layout)
+            self.body.addLayout(widget_or_layout, stretch)
 
     def set_done(self, done: bool):
         """Turns the step badge into a green tick (and back to its number)."""
         if self.badge is not None:
             self.badge.setText("✓" if done else self._num)
             theme.set_role(self.badge, tone="good" if done else "none")
+
+    def set_step(self, step: int):
+        """Change the number shown on the badge (a finished step keeps its tick)."""
+        self._num = str(step)
+        if self.badge is not None and self.badge.text() != "✓":
+            self.badge.setText(self._num)
 
     def set_tone(self, tone: str):
         theme.set_role(self, tone=tone)
@@ -108,24 +140,33 @@ class Card(QFrame):
 class Banner(QFrame):
     """A message strip: tone = good | warn | bad | accent | none."""
 
-    def __init__(self, text: str = "", tone: str = "none", parent=None):
+    def __init__(self, text: str = "", tone: str = "none", parent=None, hide_empty: bool = False):
         super().__init__(parent)
+        self.hide_empty = hide_empty                      # no empty box while there is nothing to say
         theme.set_role(self, "banner", tone)
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
-        lay.setSpacing(10)
+        lay.setContentsMargins(12, 7, 12, 7)
+        lay.setSpacing(9)
         self.dot = Dot(tone)
-        lay.addWidget(self.dot, 0, Qt.AlignTop)
+        mark = QVBoxLayout()
+        mark.setContentsMargins(0, 5, 0, 0)               # level with the first line of text
+        mark.addWidget(self.dot)
+        mark.addStretch(1)
+        lay.addLayout(mark)
         self.text = label(text, wrap=True)
         self.text.setTextInteractionFlags(Qt.TextSelectableByMouse)
         lay.addWidget(self.text, 1)
         self.actions = QHBoxLayout()
         lay.addLayout(self.actions)
+        if hide_empty and not text:
+            self.hide()
 
     def set(self, text: str, tone: str):
         self.text.setText(text)
         theme.set_role(self, tone=tone)
         self.dot.set_tone(tone)
+        if self.hide_empty:
+            self.setVisible(bool(text))
 
 
 class Segmented(QWidget):
@@ -160,17 +201,20 @@ class Segmented(QWidget):
         return next((k for k, b in self.buttons.items() if b.isChecked()), "")
 
 
-class Stat(QWidget):
-    """Big number with a caption."""
+class Stat(QFrame):
+    """Big number with a caption, in its own tile."""
 
     def __init__(self, caption: str, value: str = "-"):
         super().__init__()
+        theme.set_role(self, "tile")
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(12, 8, 12, 8)
         lay.setSpacing(0)
-        self.value = label(value, "stat")
-        lay.addWidget(self.value)
         lay.addWidget(label(caption, "caption"))
+        self.value = label(value, "stat")
+        self.value.setMinimumWidth(10)
+        lay.addWidget(self.value)
 
     def set(self, text: str, tone: str = "none"):
         self.value.setText(text)
@@ -206,7 +250,8 @@ class SignalScope(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(self.plot)
-        self.setMinimumHeight(220)
+        self.plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)   # takes the free height, asks for none
+        self.setMinimumHeight(200)
         self.restyle()
         self.timer = QTimer(self)
         self.timer.setInterval(50)

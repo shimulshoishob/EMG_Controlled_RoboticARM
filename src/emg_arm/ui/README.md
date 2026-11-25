@@ -17,6 +17,7 @@ PyQt5, Fusion style on every platform, light / dark / pink themes, always-visibl
 | [`keyboard.py`](keyboard.py) | `KeyMap` (configurable keys, saved to `keymap.json`) and `KeyboardController` (application-wide handler: hold to move, release to stop, never swallows keys meant for text boxes) |
 | [`theme.py`](theme.py) | colour tokens and stylesheet, macOS/Windows fonts, light/dark/pink, title-bar colour |
 | [`widgets.py`](widgets.py) | `Card`, `Banner`, `Chip`, `Segmented`, `Stat`, `SignalScope`… colours come from roles, never from the widgets |
+| [`icons.py`](icons.py) | sidebar line icons, drawn from inline SVG in the colours of the current theme |
 | [`dialogs.py`](dialogs.py) | first-time Wi-Fi setup over USB, and the *Connection setup* check |
 | [`tasks.py`](tasks.py) | run a blocking function off the GUI thread and get the result back as a signal |
 | [`pages/`](pages/README.md) | one module per screen |

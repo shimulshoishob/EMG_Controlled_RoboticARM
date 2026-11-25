@@ -21,7 +21,7 @@ class UsbSetupDialog(QDialog):
     def __init__(self, parent=None, default_ssid: str = "", default_port: str = ""):
         super().__init__(parent)
         self.setWindowTitle("Set up the armband's Wi-Fi")
-        self.setMinimumSize(700, 780)
+        self.setMinimumSize(700, 720)
         self.setModal(True)
         self._busy = False
         root = QVBoxLayout(self)
@@ -75,6 +75,7 @@ class UsbSetupDialog(QDialog):
         c3.add(self.result)
         root.addWidget(c3)
 
+        root.addStretch(1)                 # spare height goes here, not between the title and the steps
         foot = QHBoxLayout()
         foot.addStretch(1)
         foot.addWidget(button("Close", slot=self.reject))

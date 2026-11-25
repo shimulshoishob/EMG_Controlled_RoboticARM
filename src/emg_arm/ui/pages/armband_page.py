@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
-                             QMessageBox, QVBoxLayout, QWidget)
+                             QMessageBox, QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from ...armband import control, netinfo, serial_setup
 from ...armband.link import LinkState, LinkStats
@@ -16,7 +16,7 @@ from .. import theme
 from ..bridge import ArmbandBridge
 from ..dialogs import DoctorDialog, UsbSetupDialog
 from ..tasks import run_task
-from ..widgets import Banner, Card, Chip, Segmented, SignalScope, Stat, button, label
+from ..widgets import Banner, Card, Segmented, SignalScope, Stat, button, label, section
 
 STATE_TONE = {LinkState.IDLE: "none", LinkState.CONNECTING: "accent", LinkState.STREAMING: "good",
               LinkState.STALLED: "warn", LinkState.RECONNECTING: "warn", LinkState.FAILED: "bad"}
@@ -36,15 +36,19 @@ class ArmbandPage(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(16)
+        root.setSpacing(14)
 
         # ---- how are you connecting?
-        mode_card = Card("How do you want to connect?",
-                         "Wi-Fi is wireless and safest for the person wearing the electrodes. USB is a good fallback.")
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(14)
+        mode_row.addWidget(section("Connect with"))
         self.mode = Segmented([("wifi", "Wi-Fi (recommended)"), ("usb", "USB cable")])
         self.mode.changed.connect(self._mode_changed)
-        mode_card.add(self.mode)
-        root.addWidget(mode_card)
+        self.mode.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        mode_row.addWidget(self.mode)
+        mode_row.addWidget(label("Wi-Fi is wireless and safest for the person wearing the electrodes. "
+                                 "USB is a good fallback.", "caption", wrap=True), 1)
+        root.addLayout(mode_row)
 
         # Only the chosen mode's cards are shown (a QStackedWidget would reserve the tallest page's height).
         self.mode_pages = {"wifi": self._build_wifi(), "usb": self._top(self._build_usb(), stretch=False)}
@@ -82,46 +86,45 @@ class ArmbandPage(QWidget):
 
     # ================================================================ builders
     def _build_wifi(self) -> QWidget:
+        """Steps 1-3 side by side, read from left to right."""
         host = QWidget()
-        lay = QVBoxLayout(host)
+        host.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        lay = QHBoxLayout(host)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(16)
+        lay.setSpacing(14)
 
-        c1 = Card("Give the armband your Wi-Fi", "First time only. The armband remembers the network, so you can "
-                  "skip this step next time.", step=1)
-        self.setup_btn = button("Set up Wi-Fi over USB…", "primary", slot=self.open_usb_setup)
-        c1.header_right.addWidget(self.setup_btn)
+        c1 = Card("Give it your Wi-Fi", "First time only: the armband remembers the network, so you can skip this "
+                  "next time.", step=1, fill=True)
         c1.add(label("You need: the armband plugged into this computer with its USB cable, and the name and "
                      "password of a 2.4 GHz Wi-Fi network that this computer is also connected to.", "muted", wrap=True))
-        lay.addWidget(c1)
+        c1.body.addStretch(1)
+        self.setup_btn = button("Set up Wi-Fi over USB…", "primary", slot=self.open_usb_setup)
+        c1.add(self.setup_btn)
+        lay.addWidget(c1, 1)
         self.card_setup = c1
 
-        c2 = Card("Find your armband", "The armband must be powered and on the same Wi-Fi as this computer.", step=2)
-        self.scan_btn = button("Scan network", "primary", slot=self.scan)
-        c2.header_right.addWidget(self.scan_btn)
+        c2 = Card("Find your armband", "It must be powered and on the same Wi-Fi as this computer.", step=2, fill=True)
         self.found_list = QListWidget()
         self.found_list.setMaximumHeight(120)
-        self.found_list.setMinimumHeight(64)
+        self.found_list.setMinimumHeight(52)
         self.found_list.itemSelectionChanged.connect(self._pick_device)
-        c2.add(self.found_list)
+        c2.add(self.found_list, 1)
         self.scan_banner = Banner("Press “Scan network”. It takes a few seconds.", "none")
         c2.add(self.scan_banner)
         row = QHBoxLayout()
-        row.addWidget(label("Or type its IP address:", "muted"))
+        row.addWidget(label("Or type its IP:", "muted"))
         self.ip_edit = QLineEdit()
         self.ip_edit.setPlaceholderText("192.168.1.42")
-        self.ip_edit.setMaximumWidth(220)
         self.ip_edit.textChanged.connect(self._update_buttons)
-        row.addWidget(self.ip_edit)
-        row.addStretch(1)
+        row.addWidget(self.ip_edit, 1)
         c2.add(row)
-        lay.addWidget(c2)
+        self.scan_btn = button("Scan network", "primary", slot=self.scan)
+        c2.add(self.scan_btn)
+        lay.addWidget(c2, 1)
         self.card_find = c2
 
-        c3 = Card("Enter the access key", "A password shared by the app and the firmware. It is the "
-                  "DEVICE_ACCESS_KEY_VALUE inside the secrets.h you flashed.", step=3)
-        self.import_btn = button("Import from secrets.h…", slot=self.import_key)
-        c3.header_right.addWidget(self.import_btn)
+        c3 = Card("Enter the access key", "The DEVICE_ACCESS_KEY_VALUE inside the secrets.h you flashed.", step=3,
+                  fill=True)
         krow = QHBoxLayout()
         self.key_edit = QLineEdit(self.settings.get("access_key"))
         self.key_edit.setEchoMode(QLineEdit.Password)
@@ -131,9 +134,12 @@ class ArmbandPage(QWidget):
         self.key_show = button("Show", slot=self._toggle_key)
         krow.addWidget(self.key_show)
         c3.add(krow)
-        self.key_status = label("", "caption")
+        self.key_status = label("", "caption", wrap=True)
         c3.add(self.key_status)
-        lay.addWidget(c3)
+        c3.body.addStretch(1)
+        self.import_btn = button("Import from secrets.h…", slot=self.import_key)
+        c3.add(self.import_btn)
+        lay.addWidget(c3, 1)
         self.card_key = c3
         return host
 
@@ -153,16 +159,18 @@ class ArmbandPage(QWidget):
     def _build_connect(self) -> Card:
         c = Card("Connect and check the signal", "", step=4)
         self.connect_card = c
-        self.connect_btn = button("Connect", "success", slot=self.toggle_connection)
-        self.connect_btn.setMinimumWidth(150)
-        c.header_right.addWidget(self.connect_btn)
-        self.banner = Banner("Not connected.", "none")
-        c.add(self.banner)
         row = QHBoxLayout()
+        row.setSpacing(12)
+        self.connect_btn = button("Connect", slot=self.toggle_connection)
+        self.connect_btn.setProperty("big", True)
+        theme.set_role(self.connect_btn, "success")
+        self.connect_btn.setMinimumSize(170, 40)
+        row.addWidget(self.connect_btn)
+        self.banner = Banner("Not connected.", "none")
+        row.addWidget(self.banner, 1)
         self.doctor_btn = button("Connection setup", "ghost", "Checks network, key and firewall step by step",
                                  slot=self.open_doctor)
         row.addWidget(self.doctor_btn)
-        row.addStretch(1)
         c.add(row)
         return c
 
@@ -187,9 +195,18 @@ class ArmbandPage(QWidget):
         self.signal_card.setVisible(shown)
         self.signal_btn.setText("Hide live signal" if shown else "Show live signal")
         if shown and self.isVisible():
+            QTimer.singleShot(50, self._reveal_signal)
             self.scope.start()
         else:
             self.scope.stop()
+
+    def _reveal_signal(self):
+        """Scroll the page so the signal that was just opened is on screen (small windows)."""
+        parent = self.parentWidget()
+        while parent is not None and not isinstance(parent, QScrollArea):
+            parent = parent.parentWidget()
+        if parent is not None:
+            parent.ensureWidgetVisible(self.signal_card, 0, 8)
 
     def showEvent(self, e):
         super().showEvent(e)
@@ -207,6 +224,7 @@ class ArmbandPage(QWidget):
     def _mode_changed(self, key: str):
         for name, page in self.mode_pages.items():
             page.setVisible(name == key)
+        self.connect_card.set_step(4 if key == "wifi" else 2)       # USB needs only one step before connecting
         self.settings.set("connection", key)
         self._update_buttons()
 
@@ -269,7 +287,7 @@ class ArmbandPage(QWidget):
     # ================================================================ USB setup + scan
     def open_usb_setup(self):
         if self.bridge.active:
-            QMessageBox.information(self, "Wi-Fi setup", "Disconnect the armband first (step 4).")
+            QMessageBox.information(self, "Wi-Fi setup", "Disconnect the armband first.")
             return
         dlg = UsbSetupDialog(self, default_ssid=self.settings.get("wifi_ssid") or netinfo.current_wifi_ssid() or "",
                              default_port=self.settings.get("usb_port"))

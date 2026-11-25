@@ -1,4 +1,4 @@
-"""Main window: step-by-step navigation, always-visible STOP button, and the control logic that ties
+"""Main window: top status bar with the always-visible STOP button, sidebar navigation, and the control logic that ties
 armband -> model -> gesture filter -> motion streamer -> arm together."""
 
 from __future__ import annotations
@@ -9,9 +9,10 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import QSize, Qt, QTimer
 from PyQt5.QtWidgets import (QApplication, QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QMainWindow, QMessageBox,
-                             QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
+                             QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QVBoxLayout,
+                             QWidget)
 
 from .. import __version__
 from ..arm.driver import ArmSafetyError, SafeArm, SimulatedBackend, XArmBackend
@@ -26,7 +27,7 @@ from ..control.mapping import MappingError, MappingStore
 from ..ml.inference import InferenceWorker, ModelError, load_model
 from ..paths import LOG_DIR
 from ..session import RawRecorder, SessionLog
-from . import theme
+from . import icons, theme
 from .bridge import ArmbandBridge
 from .keyboard import KeyboardController, KeyMap, build_actions
 from .pages.armband_page import ArmbandPage
@@ -35,21 +36,19 @@ from .pages.data_page import DataPage
 from .pages.mapping_page import MappingPage
 from .pages.model_page import ModelPage
 from .pages.monitor_page import MonitorPage
-from .widgets import Chip, Dot, button, label
+from .widgets import Chip, Dot, button, label, section
 
 SAMPLE_RATE = 500
 
 # (key, sidebar text, page title, lead text, sidebar group)
 PAGES = [
     ("control", "Arm control", "Arm control",
-     "Connect the arm, enable motion, then move it with gestures, buttons or the keyboard. "
-     "Stop at any time with Space or the red button.", "ROBOTIC ARM"),
-    ("model", "Gesture model", "Gesture model", "Pick the trained model that recognises your gestures from the EMG signal.", "EMG & MODEL"),
-    ("armband", "Armband", "Armband connection",
-     "Four short steps: Wi-Fi once, find it, enter the key, connect. Then check the live signal.", "EMG & MODEL"),
+     "Connect, arm, then move with gestures, buttons or keys. Space stops at any time.", "ROBOTIC ARM"),
+    ("model", "Gesture model", "Gesture model", "Pick the trained model that recognises your gestures.", "EMG & MODEL"),
+    ("armband", "Armband", "Armband connection", "Set up Wi-Fi once, find it, enter the key, connect.", "EMG & MODEL"),
     ("monitor", "Live monitor", "Live monitor", "EMG signal, recognised gesture, confidence and transitions.", "EMG & MODEL"),
     ("mapping", "Gesture mapping", "Gesture mapping", "Choose what the arm does for each of the ten gestures.", "EMG & MODEL"),
-    ("data", "Settings && data", "Settings & data", "Appearance, configuration files, recording and arm calibration.", "SETTINGS"),
+    ("data", "Settings && data", "Settings & data", "Appearance, configuration files and arm calibration.", "SETTINGS"),
 ]
 
 
@@ -171,6 +170,38 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+
+        # ---- top bar (always visible): brand, live status, STOP
+        bar = QFrame()
+        theme.set_role(bar, "topbar")
+        bl = QHBoxLayout(bar)
+        bl.setContentsMargins(18, 9, 12, 9)
+        bl.setSpacing(6)
+        brand = QWidget()
+        brand.setMinimumWidth(124)
+        names_box = QVBoxLayout(brand)
+        names_box.setContentsMargins(0, 0, 0, 0)
+        names_box.setSpacing(0)
+        names_box.addWidget(label("BIOWAVE", "brand"))
+        names_box.addWidget(label("EMG Robotic Arm", "caption"))
+        bl.addWidget(brand)
+        self.chip_band = Chip("Armband: offline")
+        self.chip_arm = Chip("Arm: offline")
+        self.chip_mode = Chip("DISARMED")
+        self.chip_gesture = Chip("Gesture: -")
+        for c in (self.chip_band, self.chip_arm, self.chip_mode, self.chip_gesture):
+            bl.addWidget(c)
+        self.chip_note = label("", "muted")
+        bl.addWidget(self.chip_note, 1)
+        estop = button("STOP   (Space / Esc)", "estop", slot=lambda: self.emergency_stop("Stop button pressed"))
+        estop.setMinimumHeight(44)
+        estop.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)      # always shown in full
+        bl.addWidget(estop)
+        outer.addWidget(bar)
+        glow = QFrame()
+        theme.set_role(glow, "glow")
+        outer.addWidget(glow)
+
         body = QHBoxLayout()
         body.setSpacing(0)
         outer.addLayout(body, 1)
@@ -180,33 +211,35 @@ class MainWindow(QMainWindow):
         theme.set_role(side, "sidebar")
         side.setFixedWidth(224)
         sl = QVBoxLayout(side)
-        sl.setContentsMargins(16, 20, 16, 16)
-        sl.setSpacing(3)
-        sl.addWidget(label("BioWave", "h1"))
-        sl.addWidget(label("EMG Robotic Arm", "muted"))
+        sl.setContentsMargins(10, 6, 10, 10)
+        sl.setSpacing(4)
         self.nav_group = QButtonGroup(self)
         self.nav_buttons, self.nav_dots = {}, {}
         group = None
         for key, nav_text, _t, _l, grp in PAGES:
             if grp != group:
                 group = grp
-                sl.addSpacing(14)
-                sl.addWidget(label(grp, "caption"))
-            row = QHBoxLayout()
-            row.setSpacing(0)
-            b = QPushButton(nav_text)
+                sl.addSpacing(10)
+                heading = section(grp)
+                heading.setContentsMargins(8, 0, 0, 2)
+                sl.addWidget(heading)
+            b = QPushButton(" " + nav_text)
             b.setCheckable(True)
             b.setCursor(Qt.PointingHandCursor)
+            b.setIconSize(QSize(icons.SIZE, icons.SIZE))
             theme.set_role(b, "nav")
             b.clicked.connect(lambda _=False, k=key: self.go_to(k))
             self.nav_group.addButton(b)
             self.nav_buttons[key] = b
-            dot = Dot()
+            dot = Dot()                                      # status light inside the button, at the right edge
+            dot.setAttribute(Qt.WA_TransparentForMouseEvents)
+            inside = QHBoxLayout(b)
+            inside.setContentsMargins(0, 0, 8, 0)
+            inside.addStretch(1)
+            inside.addWidget(dot)
             self.nav_dots[key] = dot
-            row.addWidget(b, 1)
-            row.addWidget(dot)
-            row.addSpacing(6)
-            sl.addLayout(row)
+            sl.addWidget(b)
+        self._paint_nav_icons()
         sl.addStretch(1)
         sl.addWidget(label(f"Version {__version__}", "caption"))
         body.addWidget(side)
@@ -216,13 +249,13 @@ class MainWindow(QMainWindow):
         content.setContentsMargins(0, 0, 0, 0)
         content.setSpacing(0)
         head = QWidget()
-        hl = QVBoxLayout(head)
-        hl.setContentsMargins(36, 26, 36, 8)
-        hl.setSpacing(4)
+        hl = QHBoxLayout(head)
+        hl.setContentsMargins(20, 12, 20, 4)
+        hl.setSpacing(14)
         self.title = label("", "h1")
         self.lead = label("", "lead", wrap=True)
-        hl.addWidget(self.title)
-        hl.addWidget(self.lead)
+        hl.addWidget(self.title, 0, Qt.AlignVCenter)
+        hl.addWidget(self.lead, 1, Qt.AlignVCenter)
         content.addWidget(head)
 
         self.stack = QStackedWidget()
@@ -243,34 +276,15 @@ class MainWindow(QMainWindow):
             scroll.setFrameShape(QFrame.NoFrame)
             host = QWidget()
             hbox = QHBoxLayout(host)
-            hbox.setContentsMargins(32, 12, 32, 28)
+            hbox.setContentsMargins(20, 8, 20, 14)
             hbox.addStretch(1)
-            self.pages[key].setMaximumWidth(1000)
+            self.pages[key].setMaximumWidth(1500)              # keeps lines readable on very wide screens
             hbox.addWidget(self.pages[key], 100)
             hbox.addStretch(1)
             scroll.setWidget(host)
             self.stack.addWidget(scroll)
         content.addWidget(self.stack, 1)
         body.addLayout(content, 1)
-
-        # ---- bottom bar (always visible)
-        bar = QFrame()
-        theme.set_role(bar, "bottombar")
-        bl = QHBoxLayout(bar)
-        bl.setContentsMargins(24, 10, 24, 10)
-        bl.setSpacing(10)
-        self.chip_band = Chip("Armband: offline")
-        self.chip_arm = Chip("Arm: offline")
-        self.chip_mode = Chip("DISARMED")
-        self.chip_gesture = Chip("Gesture: -")
-        for c in (self.chip_band, self.chip_arm, self.chip_mode, self.chip_gesture):
-            bl.addWidget(c)
-        self.chip_note = label("", "muted")
-        bl.addWidget(self.chip_note, 1)
-        estop = button("STOP   (Space / Esc)", "estop", slot=lambda: self.emergency_stop("Stop button pressed"))
-        estop.setMinimumHeight(46)
-        bl.addWidget(estop)
-        outer.addWidget(bar)
 
         # ---- wiring
         p = self.pages
@@ -301,6 +315,10 @@ class MainWindow(QMainWindow):
         p["mapping"].set_vertical(cp.vertical.currentData() or "shoulder")
 
     # ================================================================ navigation
+    def _paint_nav_icons(self):
+        for key, b in self.nav_buttons.items():
+            b.setIcon(icons.nav_icon(key))
+
     def go_to(self, key: str):
         keys = [p[0] for p in PAGES]
         idx = keys.index(key)
@@ -318,6 +336,7 @@ class MainWindow(QMainWindow):
         for key in ("armband", "monitor", "mapping"):
             self.pages[key].restyle()
         theme.apply_title_bar(self)
+        self._paint_nav_icons()
         self.refresh_status()
 
     def refresh_status(self):
@@ -356,9 +375,9 @@ class MainWindow(QMainWindow):
         if s != LinkState.STREAMING:
             missing.append("connect the armband - or use the keyboard only")
         if not self.arm:
-            missing.append("connect the arm (card 1 above)")
+            missing.append("connect the arm (step 1)")
         elif not self.arm.homed:
-            missing.append("send the arm home (card 1 above)")
+            missing.append("send the arm home (step 1)")
         if not self.arm and s == LinkState.STREAMING and self.model_loaded:
             cp.checklist.setText("Armband connected, no arm: PREVIEW mode. The Live panel shows what each gesture would do "
                                  "(nothing moves). Connect the arm or tick “Simulate” to move it.")
@@ -631,7 +650,7 @@ class MainWindow(QMainWindow):
             self.disarm("Disarmed by user")
             return
         if not self.can_arm():
-            QMessageBox.information(self, "Not ready", "Connect the arm and press “Go home” first (card 1 on this page).")
+            QMessageBox.information(self, "Not ready", "Connect the arm and press “Go home” first (step 1 on this page).")
             return
         if cp.mode.currentData() != "keyboard" and not (self.link_state == LinkState.STREAMING and self.model_loaded):
             if QMessageBox.question(self, "Gestures not available",
@@ -649,9 +668,9 @@ class MainWindow(QMainWindow):
 
     def not_ready_reason(self):
         if not self.arm:
-            return "Keys only move the arm when ARMED: first connect the arm (card 1)."
+            return "Keys only move the arm when ARMED: first connect the arm (step 1)."
         if not self.arm.homed:
-            return "Keys only move the arm when ARMED: send the arm home first (card 1), then ARM."
+            return "Keys only move the arm when ARMED: send the arm home first (step 1), then ARM."
         if time.monotonic() < self.home_busy_until:
             return "Wait for homing to finish, then ARM."
         return "Press ARM to enable motion, then use the keys."
@@ -723,7 +742,7 @@ class MainWindow(QMainWindow):
         rp.set_gripper_state(self.arm.gripper_closed if connected else None)
         cp.arm_btn.setEnabled((armed or self.can_arm()) and self.parking is None)
         cp.arm_btn.setText("DISARM" if armed else "ARM - enable motion")
-        theme.set_role(cp.arm_btn, "ghost" if armed else "success")
+        theme.set_role(cp.arm_btn, "outline" if armed else "success")
         simulated = connected and isinstance(self.arm.backend, SimulatedBackend)
         if self.parking:
             cp.state_banner.set("PARKING the arm, then closing (Space/Esc stops it).", "warn")

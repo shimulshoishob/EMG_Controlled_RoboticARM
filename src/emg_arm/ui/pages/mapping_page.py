@@ -9,13 +9,13 @@ from typing import Dict, List, Optional
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QListWidget,
-                             QListWidgetItem, QMessageBox, QSpinBox, QVBoxLayout, QWidget)
+                             QListWidgetItem, QMessageBox, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
 
 from ...control.commands import CommandGenerator
 from ...control.gestures import BY_ID, GESTURES
 from ...control.mapping import ACTIONS, LONG_ACTIONS, VERTICAL, GestureMapping, MappingError, MappingStore, errors, validate
 from .. import theme
-from ..widgets import Banner, Card, button, label
+from ..widgets import Banner, Card, button, label, two_columns
 
 
 class MappingPage(QWidget):
@@ -41,46 +41,59 @@ class MappingPage(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(16)
+        columns, left, right = two_columns(2, 3)
+        root.addLayout(columns, 1)
 
         # ---- live preview + list
-        head = Card("Gestures", "Select a gesture to edit what it does. The highlighted row is the gesture detected right now.")
+        head = Card("Gestures", "Select one to edit it. The highlighted row is detected right now.", fill=True)
         self.live = Banner("No gesture detected yet.", "none")
         head.add(self.live)
         self.list = QListWidget()
-        self.list.setMinimumHeight(330)
-        self.list.setMaximumHeight(380)
+        self.list.setMinimumHeight(240)
+        self.list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+        self.list.setWordWrap(True)
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list.setResizeMode(QListWidget.Adjust)
         self.list.currentRowChanged.connect(self._select)
-        head.add(self.list)
+        head.add(self.list, 1)
         row = QHBoxLayout()
         self.reset_btn = button("Reset to defaults", "ghost", slot=self._reset)
         self.export_btn = button("Export…", slot=self._export)
         self.import_btn = button("Import…", slot=self._import)
         for b in (self.reset_btn, self.export_btn, self.import_btn):
-            row.addWidget(b)
+            b.setProperty("compact", True)
+        row.addWidget(self.reset_btn)
         row.addStretch(1)
+        row.addWidget(self.export_btn)
+        row.addWidget(self.import_btn)
         head.add(row)
-        root.addWidget(head)
+        left.addWidget(head, 1)
 
         # ---- editor
-        self.editor = Card("Edit gesture", " ")
+        self.editor = Card("Edit gesture", " ", fill=True)
         self.preview = label("", "mono", wrap=True)
-        self.editor.add(self.preview)
         self.enabled = QCheckBox("Enabled")
-        self.editor.add(self.enabled)
+        top = QHBoxLayout()
+        top.setSpacing(14)
+        top.addWidget(self.preview, 1)
+        top.addWidget(self.enabled, 0, Qt.AlignTop)
+        self.editor.add(top)
         grid = QGridLayout()
         grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(8)
+        grid.setVerticalSpacing(5)
         self.rows: Dict[str, tuple] = {}
 
         def add_row(key, text, widget, hint=""):
-            r = len(self.rows)
+            r = 2 * len(self.rows)                  # the hint sits under its field
             lab = label(text, "muted")
             grid.addWidget(lab, r, 0)
             grid.addWidget(widget, r, 1)
+            if isinstance(widget, QComboBox):
+                widget.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                widget.setMinimumContentsLength(12)
             h = label(hint, "caption", wrap=True) if hint else None
             if h:
-                grid.addWidget(h, r, 2)
+                grid.addWidget(h, r + 1, 1)
             self.rows[key] = (lab, widget, h)
 
         self.action = QComboBox()
@@ -134,8 +147,11 @@ class MappingPage(QWidget):
         add_row("conf", "Confidence threshold", self.conf, "Higher = fewer false triggers, slower response.")
         self.model_label = QComboBox()
         add_row("model_label", "Model class", self.model_label, "Automatic matches by name. Pick a class if your model names it differently.")
-        grid.setColumnStretch(2, 1)
+        for spin in (self.speed, self.conf):
+            spin.setMinimumWidth(170)               # the "use the global ..." text would otherwise widen small windows
+        grid.setColumnStretch(1, 1)
         self.editor.add(grid)
+        self.editor.body.addStretch(1)
         self.issues = Banner("", "none")
         self.editor.add(self.issues)
         actions = QHBoxLayout()
@@ -144,10 +160,10 @@ class MappingPage(QWidget):
         actions.addWidget(self.save_btn)
         actions.addWidget(self.revert_btn)
         self.save_note = label("", "caption", wrap=True)
-        actions.addWidget(self.save_note, 1)
+        actions.addStretch(1)
         self.editor.add(actions)
-        root.addWidget(self.editor)
-        root.addStretch(1)
+        self.editor.add(self.save_note)
+        right.addWidget(self.editor, 1)
 
         for w in (self.enabled,):
             w.toggled.connect(self._edited)
@@ -371,8 +387,7 @@ class MappingPage(QWidget):
         for b in (self.reset_btn, self.import_btn):
             b.setEnabled(True)
         if self.armed:
-            self.save_note.setText("The arm is armed: it will be disarmed automatically when you save, reset or import "
-                                   "(mappings never change while the arm can move).")
+            self.save_note.setText("Arm is armed: saving, resetting or importing disarms it first.")
         elif dirty:
             self.save_note.setText("Unsaved changes.")
         elif not self.save_note.text().startswith("Saved") and not self.store.load_warning:
