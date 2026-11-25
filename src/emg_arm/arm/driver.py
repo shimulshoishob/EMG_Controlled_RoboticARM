@@ -144,6 +144,7 @@ class SafeArm:
         self._fine = {}
         self.homed = False
         self.gripper_closed = None
+        self.observer = None  # called as (packet, duration_ms, start, end) after every write, for the log portal
         self._validate()
         self.set_speed(float(arm["default_speed_units_per_s"]))
 
@@ -201,10 +202,17 @@ class SafeArm:
         if not packet:
             return 0
         duration_ms = int(min(MAX_DURATION_MS, math.ceil(duration_ms)))
+        start = time.perf_counter()
         self.backend.set_positions(packet, duration_ms)
+        end = time.perf_counter()
         for servo_id, position in packet.items():
             self.targets[servo_id] = position
             self._fine[servo_id] = float(position)
+        if self.observer:
+            try:
+                self.observer(dict(packet), duration_ms, start, end)
+            except Exception:
+                pass  # logging must never affect control of the arm
         return duration_ms
 
     # ------------------------------------------------------------- commands
@@ -243,6 +251,24 @@ class SafeArm:
                 # stretch on the duration cannot cause any real motion.
                 self._send_many_locked(known, 100)
         return positions
+
+    def freeze_gripper(self):
+        """Stop the gripper where it is. Only for the automatic gripper check: a gripper that is
+        holding an object on purpose must not be re-commanded (see freeze)."""
+        with self._io_lock:
+            position = self.backend.get_position(self.grip_servo)
+            if position is not None:
+                self._send_many_locked({self.grip_servo: position}, 100)
+                self.gripper_closed = position > (self.grip_open + self.grip_close) / 2
+        return position
+
+    def sync(self, errors):
+        """Take measured positions (as returned by home_errors) as the starting point of the next move."""
+        with self._io_lock:
+            for sid, (position, _home) in errors.items():
+                if position is not None:
+                    self.targets[sid] = int(position)
+                    self._fine[sid] = float(position)
 
     def home_errors(self, tolerance=25):
         """Servos that are not at the home pose: {servo: (position or None, home)}."""

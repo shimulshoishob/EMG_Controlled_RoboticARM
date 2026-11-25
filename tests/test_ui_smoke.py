@@ -33,6 +33,14 @@ def pump(seconds):
         time.sleep(0.01)
 
 
+def settle(window, timeout=5.0):
+    """Wait for the automatic rest / gripper routine to finish."""
+    end = time.time() + timeout
+    while window.prep and time.time() < end:
+        pump(0.05)
+    assert window.prep is None
+
+
 class WindowSmokeTests(unittest.TestCase):
     def setUp(self):
         theme.apply_theme(APP, "light")
@@ -93,9 +101,9 @@ class WindowSmokeTests(unittest.TestCase):
         w = self.window
         w.pages["control"].mode.setCurrentIndex(w.pages["control"].mode.findData("keyboard"))   # otherwise arming asks a modal question
         w.toggle_arm()
-        pump(0.4)                                          # the arm homes by itself after connecting
-        w.arm.homed = True
+        settle(w)                                          # the rest routine runs by itself after connecting
         w.toggle_armed()
+        settle(w)                                          # ... and again before motion is enabled
         self.assertTrue(w.teleop.armed)
         w.emergency_stop("test")
         self.assertFalse(w.teleop.armed)
@@ -105,9 +113,9 @@ class WindowSmokeTests(unittest.TestCase):
         cp = w.pages["control"]
         cp.mode.setCurrentIndex(cp.mode.findData("keyboard"))
         w.toggle_arm()
-        pump(0.4)                                          # the arm homes by itself after connecting
-        w.arm.homed = True
+        settle(w)                                          # the rest routine runs by itself after connecting
         w.toggle_armed()
+        settle(w)
         self.assertTrue(cp.pad_buttons["left"].isEnabled())
         before = dict(w.arm.targets)[6]
         cp.pad_buttons["left"].pressed.emit()
@@ -124,7 +132,7 @@ class WindowSmokeTests(unittest.TestCase):
         rp = w.pages["arm"]
         self.assertFalse(rp.grip_btn.isEnabled(), "nothing to do before the arm is connected")
         w.toggle_arm()                                    # simulated arm; it starts with the gripper OPEN
-        pump(0.5)
+        settle(w)
         self.assertTrue(w.arm.homed, "connecting must send the arm home without another click")
         self.assertTrue(w.can_arm())
         self.assertIn("Ready", rp.banner.text.text())

@@ -4,6 +4,7 @@ the link's callbacks as Qt signals."""
 from __future__ import annotations
 
 import threading
+import time
 from typing import Optional
 
 from PyQt5.QtCore import QObject, pyqtSignal
@@ -13,6 +14,7 @@ from ..armband.link import BaseLink, LinkState, UsbLink, WifiLink
 
 class ArmbandBridge(QObject):
     frames = pyqtSignal(object)          # ndarray (n, 11)
+    stamped = pyqtSignal(object, float)  # the same frames with their arrival time (time.perf_counter)
     state = pyqtSignal(str, str)         # LinkState value, message
     stats = pyqtSignal(object)           # LinkStats
     closed = pyqtSignal()                # a disconnect finished
@@ -39,8 +41,13 @@ class ArmbandBridge(QObject):
     def _hook_packets(self, link: BaseLink):
         link.packet_log_hook = lambda pkt: self.recorder.add(pkt) if self.recorder else None
 
+    def _emit_frames(self, frames):
+        arrived = time.perf_counter()    # taken in the link thread, before any waiting for the GUI
+        self.frames.emit(frames)
+        self.stamped.emit(frames, arrived)
+
     def _common(self):
-        return (self.frames.emit, self._emit_state, self.stats.emit)
+        return (self._emit_frames, self._emit_state, self.stats.emit)
 
     # -------------------------------------------------------- connect
     def connect_wifi(self, ip: str, key: str, device_id: str = ""):

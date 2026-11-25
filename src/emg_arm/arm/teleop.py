@@ -155,7 +155,8 @@ class Teleop:
         """key_motions: {motion: seconds held} for every motion key held.
         Returns a status dict for the UI. Raises on hardware errors."""
         status = {"motion": None, "source": None, "gripper": None, "switched": None, "home": False,
-                  "goto": None, "gesture": None, "hint": "", "note": "", "velocities": {}}
+                  "goto": None, "gesture": None, "hint": "", "note": "", "velocities": {},
+                  "commanded": []}   # (gesture id, servo ids) of every gesture that issued a command this tick
         if not self.armed:
             self.streamer.command({}, now)
             self.commands.reset()
@@ -198,7 +199,7 @@ class Teleop:
         for shot in shots:
             self._run_oneshot(shot, status, source)
 
-        velocities, names = {}, []
+        velocities, names, moved = {}, [], {}
         for servo, direction, speed_override, held, name in intents:
             if self.arm.at_limit(servo, direction):
                 status["note"] = f"{self.arm.names[servo]} at its safe limit - move the other way"
@@ -210,11 +211,13 @@ class Teleop:
             names.append(name)
             if source == "emg":
                 self._last_dir[servo] = (direction, now)
+                moved.setdefault(name, []).append(servo)
         self.streamer.command(velocities, now)
         if names:
             status["motion"] = " + ".join(sorted(set(names)))
             status["source"] = source
         status["velocities"] = velocities
+        status["commanded"] += list(moved.items())
         return status
 
     # --------------------------------------------------------------- helpers
@@ -246,3 +249,8 @@ class Teleop:
         else:
             return
         status["source"] = source
+        if source == "emg":
+            servos = [self.arm.grip_servo] if action.startswith("gripper") else \
+                [status["goto"][0]] if action == "move_to" else \
+                list(self.arm.home_pose) if action == "go_home" else []
+            status["commanded"].append((shot.gesture_id, servos))

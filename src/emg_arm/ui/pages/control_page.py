@@ -41,7 +41,7 @@ class ControlPage(QWidget):
         self.arm_page = ArmPage(simulate_default)
         left.addWidget(self.arm_page)
 
-        c1 = Card("Enable motion", "The arm only moves while ARMED.", step=2)
+        c1 = Card("Enable motion", "ARM first runs the rest / gripper check, then the arm follows you.", step=2)
         self.arm_btn = button("ARM - enable motion", slot=self.arm_toggled.emit)
         self.arm_btn.setProperty("big", True)
         theme.set_role(self.arm_btn, "success")
