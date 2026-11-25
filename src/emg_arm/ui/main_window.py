@@ -27,12 +27,14 @@ from ..control.mapping import MappingError, MappingStore
 from ..ml.inference import InferenceWorker, ModelError, load_model
 from ..paths import LOG_DIR
 from ..session import RawRecorder, SessionLog
-from . import icons, theme
+from ..telemetry import PipelineLog, Timing
+from . import icons, sound, theme
 from .bridge import ArmbandBridge
 from .keyboard import KeyboardController, KeyMap, build_actions
 from .pages.armband_page import ArmbandPage
 from .pages.control_page import ControlPage
 from .pages.data_page import DataPage
+from .pages.log_page import LogPage
 from .pages.mapping_page import MappingPage
 from .pages.model_page import ModelPage
 from .pages.monitor_page import MonitorPage
@@ -47,6 +49,8 @@ PAGES = [
     ("model", "Gesture model", "Gesture model", "Pick the trained model that recognises your gestures.", "EMG & MODEL"),
     ("armband", "Armband", "Armband connection", "Set up Wi-Fi once, find it, enter the key, connect.", "EMG & MODEL"),
     ("monitor", "Live monitor", "Live monitor", "EMG signal, recognised gesture, confidence and transitions.", "EMG & MODEL"),
+    ("log", "Log portal", "Log portal",
+     "Live timing from armband signal to classification to the command sent to the xArm.", "EMG & MODEL"),
     ("mapping", "Gesture mapping", "Gesture mapping", "Choose what the arm does for each of the ten gestures.", "EMG & MODEL"),
     ("data", "Settings && data", "Settings & data", "Appearance, configuration files and arm calibration.", "SETTINGS"),
 ]
@@ -95,6 +99,9 @@ class MainWindow(QMainWindow):
         self.data_buffer = None
         self.baseline = None
         self.last_batch_t = 0.0
+        self._last_window_arrived = None
+        self.pipeline = PipelineLog(self.config["filter"]["vote_window"],
+                                    {int(k): v.get("name", f"servo {k}") for k, v in self.config["arm"]["servos"].items()})
         self.link_state = LinkState.IDLE
         self.last_link_message = ""
         self.bridge = ArmbandBridge(self)
@@ -119,6 +126,9 @@ class MainWindow(QMainWindow):
         self.teleop = None
         self.home_busy_until = 0.0
         self.parking = None
+        self.prep = None               # the automatic rest / gripper routine while it runs
+        self._prep_count = 0
+        self._joint = None             # Up/Down joint last announced
         self.park_aborted = False
         self.close_ready = False
         self.pad_held = {}
@@ -132,7 +142,7 @@ class MainWindow(QMainWindow):
         self.keyboard.held_changed.connect(self._keys_held_changed)
         self.keyboard.ignored.connect(self._key_ignored)
         self.pages["keyboard"].attach(self.keyboard)
-        self.bridge.frames.connect(self.on_batch)
+        self.bridge.stamped.connect(self.on_batch)
         self.bridge.state.connect(self.on_link_state)
 
         self.control_timer = QTimer(self)
@@ -268,6 +278,10 @@ class MainWindow(QMainWindow):
         self.pages["arm"] = self.pages["control"].arm_page          # the arm card and the key table live on the control page
         self.pages["keyboard"] = self.pages["control"].drive
         self.pages["monitor"] = MonitorPage()
+        self.pages["log"] = LogPage(self.pipeline)
+        self.pages["log"].frames_per_s = lambda: (self.bridge.link.stats.frames_per_s
+                                                  if self.bridge.link and self.link_state == LinkState.STREAMING else None)
+        self.pages["log"].window_ms = lambda: (self.window_samples / SAMPLE_RATE * 1000 if self.model_loaded else None)
         self.pages["mapping"] = MappingPage(self.mapping, self.config)
         self.pages["data"] = DataPage(self.settings.get("theme"), self.base_config, self.settings)
         for key, *_ in PAGES:
@@ -409,6 +423,7 @@ class MainWindow(QMainWindow):
         self.sample_count = 0
         self.inference.load_model(loaded.model, classes)
         self.gesture_filter.reset()
+        self.pipeline.forget_votes()
         self.loaded, self.model_loaded = loaded, True
         self.settings.set("last_model", path)
         problems = self._show_model(loaded)
@@ -450,6 +465,8 @@ class MainWindow(QMainWindow):
         if self.link_state != LinkState.STREAMING:
             # Predictions made before a link problem must never keep driving the arm.
             self.gesture_filter.reset()
+            self.pipeline.forget_votes()
+            self.pipeline.close_open("not sent (armband link lost)")
             self.last_prediction = ("", 0.0, None)
         if self.link_state in (LinkState.IDLE, LinkState.FAILED):
             if self.recorder:
@@ -458,7 +475,8 @@ class MainWindow(QMainWindow):
             self.pages["control"].note_label.setText("Armband link lost - gestures are ignored until it recovers")
         self.refresh_status()
 
-    def on_batch(self, batch):
+    def on_batch(self, batch, arrived=None):
+        arrived = time.perf_counter() if arrived is None else arrived
         if self.data_buffer is None:
             return
         batch = np.asarray(batch, dtype=np.float32)
@@ -480,11 +498,16 @@ class MainWindow(QMainWindow):
         self.sample_count += count
         if self.sample_count >= self.stride_samples:
             self.sample_count = 0
-            self.inference.submit_window(self.data_buffer.copy())
+            previous, self._last_window_arrived = self._last_window_arrived, arrived
+            since = arrived - previous if previous is not None and arrived - previous < 1.0 else None
+            self.inference.submit_window(self.data_buffer.copy(), arrived, since)
 
-    def on_prediction(self, label_text, confidence):
+    def on_prediction(self, label_text, confidence, timing: Timing = None):
         now = time.monotonic()
+        before = self.gesture_filter.stable
         gesture = self.gesture_filter.add_prediction(label_text, confidence, now)
+        if timing is not None:
+            self._log_prediction(label_text, confidence, gesture, timing, before, now)
         latency = getattr(self.inference, "last_latency_s", -1.0)
         self.last_prediction = (label_text, confidence, gesture)
         self.pages["control"].raw_label.setText(
@@ -497,6 +520,25 @@ class MainWindow(QMainWindow):
                                         confidence)
         self.pages["mapping"].set_live(stable, confidence)
         self.log("prediction", label=label_text, confidence=f"{confidence:.3f}", gesture=gesture or "")
+
+    def _log_prediction(self, label_text, confidence, gesture, timing, stable_before, now):
+        """Record the timing for the log portal, and start following a newly detected gesture."""
+        timing.delivered = time.perf_counter()
+        self.pipeline.add_prediction(label_text, confidence, gesture, timing)
+        stable = self.gesture_filter.stable
+        # stable_since != now: the same activation carried on after a brief misclassification
+        if not stable or stable == stable_before or self.gesture_filter.stable_since != now:
+            return
+        m = self.mapping.get(stable)
+        if not m or not m.enabled or m.kind not in ("continuous", "oneshot"):
+            why = "no arm command (rest / unmapped)"
+        elif not self.is_armed():
+            why = "not sent (disarmed: preview)"
+        elif self.teleop.mode == "keyboard":
+            why = "not sent (keyboard-only mode)"
+        else:
+            why = ""
+        self.pipeline.gesture_stable(stable, time.perf_counter(), why)
 
     def _inference_error(self, message: str):
         record("error", "gesture", message)
@@ -554,6 +596,7 @@ class MainWindow(QMainWindow):
         self.arm, self.streamer = arm, streamer
         self.arm_note = ""
         self.apply_tuning(self.pages["data"].current_tuning(), save=False)
+        arm.observer = self.pipeline.packet_sent
         streamer.start()
         self.teleop = Teleop(arm, self.gesture_filter, self.config, streamer, self.mapping)
         self.teleop.vertical = self.pages["control"].vertical.currentData()
@@ -574,11 +617,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Low voltage", f"Arm supply reads {voltage:.2f} V (minimum {arm.min_battery} V).\n"
                                 "Use the 7.5 V adapter / charge the battery before moving the arm.")
         else:
-            self.go_home(confirm=False)               # connecting is the go-ahead: the arm homes by itself (slowly)
+            self.start_preparation(then_arm=False)    # connecting is the go-ahead for the automatic rest routine
         self.refresh_status()
 
     def disconnect_arm(self):
         record("info", "arm", "Arm disconnected")
+        self._cancel_preparation()
         self.disarm("Arm disconnected")
         if self.streamer:
             self.streamer.stop()
@@ -602,6 +646,7 @@ class MainWindow(QMainWindow):
                                             "is within reach of the arm.\n\nContinue?") != QMessageBox.Yes:
             return
         self.disarm("Homing")
+        self.pipeline.cause = "rest position"
         try:
             seconds = self.arm.go_home()
         except Exception as exc:
@@ -615,9 +660,88 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(int(wait * 1000), self.after_home)
         self.refresh_status()
 
+    # ---------------------------------------------------------------- rest routine
+    def start_preparation(self, then_arm: bool):
+        """Runs when the arm is connected and when ARM is pressed. Not at the rest pose: go there slowly.
+        Already there: close and open the gripper once. ``then_arm`` enables motion afterwards."""
+        if not self.arm or self.prep or self.parking:
+            return
+        try:
+            errors = self.arm.home_errors()
+            self._prep_count += 1
+            token = self._prep_count
+            self.prep = {"token": token, "then_arm": then_arm, "stage": "rest" if errors else "gripper"}
+            if errors:
+                self.arm.sync(errors)
+                self.pipeline.cause = "rest position"
+                seconds = self.arm.go_home()
+                wait = seconds + 0.3 if not isinstance(self.arm.backend, SimulatedBackend) else 0.2
+                self.home_busy_until = time.monotonic() + wait
+                self.pages["arm"].banner.set(f"Moving to the rest position… ({seconds:.1f} s). Keep clear of the arm; "
+                                             "Space or Esc stops it.", "accent")
+                self.log("home", note=f"rest routine, {seconds:.1f}s")
+                record("info", "arm", "Rest routine: moving to the rest position")
+                self.refresh_servo_view()
+                QTimer.singleShot(int(wait * 1000), lambda: self._finish_preparation(token))
+            else:
+                self.arm.homed = True                       # measured at the rest pose: nothing has to move
+                self.pages["arm"].banner.set("Already at rest: closing and opening the gripper once. Keep fingers clear; "
+                                             "Space or Esc stops it.", "accent")
+                record("info", "arm", "Rest routine: already at rest, cycling the gripper once")
+                steps = [True, False]                       # True = close
+                if self.arm.gripper_closed is not False:
+                    steps.insert(0, False)                  # start the cycle from open
+                self._gripper_step(token, steps)
+        except Exception as exc:
+            self._cancel_preparation()
+            self.handle_arm_failure(exc)
+            return
+        self.refresh_status()
+
+    def _gripper_step(self, token: int, steps: list):
+        if not self.prep or self.prep["token"] != token:
+            return                                          # stopped or disconnected meanwhile
+        if not steps:
+            self._finish_preparation(token)
+            return
+        closed = steps[0]
+        try:
+            self.pipeline.cause = "gripper check"
+            self.arm.set_gripper(closed)
+        except Exception as exc:
+            self._cancel_preparation()
+            self.handle_arm_failure(exc)
+            return
+        self.last_motion_t = time.monotonic()
+        self.log("gripper", note="closed" if closed else "open", source="rest routine")
+        self.refresh_servo_view()
+        travel_ms = abs(self.arm.grip_close - self.arm.grip_open) / self.arm.hard_max_speed * 1000
+        real = not isinstance(self.arm.backend, SimulatedBackend)
+        wait_ms = int(max(self.arm.grip_ms, travel_ms)) + 200 if real else 120
+        QTimer.singleShot(wait_ms, lambda: self._gripper_step(token, steps[1:]))
+
+    def _finish_preparation(self, token: int):
+        if not self.prep or self.prep["token"] != token:
+            return
+        then_arm, self.prep = self.prep["then_arm"], None
+        self.home_busy_until = 0.0
+        self.pages["arm"].banner.set(f"Ready: the arm is at rest ({self._arm_summary()})."
+                                     + ("" if then_arm else " Press ARM below to enable motion."), "good")
+        if then_arm and self.arm and not self.parking:
+            self._engage()
+        else:
+            self.refresh_status()
+
+    def _cancel_preparation(self):
+        self.prep = None
+
+    def _arm_summary(self):
+        note = getattr(self, "arm_note", "")
+        return note.splitlines()[0] if note else "connected"
+
     def after_home(self):
-        if self.arm and self.arm.homed:
-            self.pages["arm"].banner.set(f"Ready: the arm is at home ({getattr(self, 'arm_note', '').splitlines()[0] if getattr(self, 'arm_note', '') else 'connected'}). "
+        if self.arm and self.arm.homed and not self.prep:
+            self.pages["arm"].banner.set(f"Ready: the arm is at rest ({self._arm_summary()}). "
                                          "Press ARM below to enable motion.", "good")
         self.refresh_status()
 
@@ -625,6 +749,7 @@ class MainWindow(QMainWindow):
         if not self.arm:
             return
         try:
+            self.pipeline.cause = "gripper button"
             self.arm.set_gripper(closed)
             self.refresh_servo_view()
             self.log("gripper", note="closed" if closed else "open", source="button")
@@ -642,12 +767,14 @@ class MainWindow(QMainWindow):
 
     # ================================================================ arming
     def can_arm(self):
-        return bool(self.arm and self.arm.homed and time.monotonic() >= self.home_busy_until)
+        return bool(self.arm and self.arm.homed and not self.prep and time.monotonic() >= self.home_busy_until)
 
     def toggle_armed(self):
         cp = self.pages["control"]
         if self.teleop and self.teleop.armed:
             self.disarm("Disarmed by user")
+            return
+        if self.prep:
             return
         if not self.can_arm():
             QMessageBox.information(self, "Not ready", "Connect the arm and press “Go home” first (step 1 on this page).")
@@ -658,7 +785,14 @@ class MainWindow(QMainWindow):
                                     "ARM in keyboard-only mode?") != QMessageBox.Yes:
                 return
             cp.mode.setCurrentIndex(cp.mode.findData("keyboard"))
+        cp.note_label.setText("Preparing the arm - motion is enabled when it finishes")
+        self.start_preparation(then_arm=True)
+
+    def _engage(self):
+        cp = self.pages["control"]
         self.gesture_filter.reset()
+        self.pipeline.forget_votes()
+        cp.note_label.setText("")
         self.keyboard.release_all()
         self.streamer.clear_error()
         self.teleop.armed = True
@@ -671,17 +805,22 @@ class MainWindow(QMainWindow):
             return "Keys only move the arm when ARMED: first connect the arm (step 1)."
         if not self.arm.homed:
             return "Keys only move the arm when ARMED: send the arm home first (step 1), then ARM."
+        if self.prep:
+            return "Wait for the rest routine to finish."
         if time.monotonic() < self.home_busy_until:
             return "Wait for homing to finish, then ARM."
         return "Press ARM to enable motion, then use the keys."
 
     def disarm(self, reason=""):
+        if self.prep:
+            self.prep["then_arm"] = False        # whatever disarms also cancels a pending "enable motion"
         if self.streamer:
             try:
                 self.streamer.halt()
             except Exception as exc:
                 console(f"Halt failed: {exc}")
         if self.teleop and self.teleop.armed:
+            self.pipeline.close_open("not sent (disarmed)")
             self.teleop.armed = False
             self.log("disarmed", note=reason)
             record("info", "arm", f"Disarmed: {reason or 'user'}")
@@ -701,7 +840,18 @@ class MainWindow(QMainWindow):
         if parking:
             self.park_aborted = True
             reason += ". Parking stopped, the arm holds here. Close again to park or exit"
+        if self.prep:
+            stage = self.prep["stage"]
+            self._cancel_preparation()
+            if stage == "gripper" and self.arm:
+                try:
+                    self.pipeline.cause = "STOP"
+                    self.arm.freeze_gripper()
+                except Exception as exc:
+                    console(f"Stopping the gripper failed: {exc}")
+            self.pages["arm"].banner.set("Stopped. The rest routine was cancelled; press ARM to run it again.", "warn")
         if self.arm and (homing or parking):
+            self.pipeline.cause = "STOP"
             try:
                 self.arm.freeze()
             except Exception as exc:
@@ -727,13 +877,18 @@ class MainWindow(QMainWindow):
         if self.teleop:
             self.teleop.vertical = cp.vertical.currentData()
         cp.joint_label.setText("Up / Down moves the " + cp.vertical.currentText().upper())
+        joint = cp.vertical.currentData()
+        previous, self._joint = self._joint, joint
+        if previous is not None and joint != previous:       # not at start-up, only for a real switch
+            sound.beep()
+            record("info", "arm", f"Up/Down now moves the {joint}")
         if "mapping" in self.pages:
             self.pages["mapping"].set_vertical(cp.vertical.currentData() or "shoulder")
 
     def update_controls(self):
         armed = bool(self.teleop and self.teleop.armed)
         connected = self.arm is not None
-        homing = time.monotonic() < self.home_busy_until or self.parking is not None
+        homing = time.monotonic() < self.home_busy_until or self.parking is not None or self.prep is not None
         rp, cp = self.pages["arm"], self.pages["control"]
         rp.simulate.setEnabled(not connected)
         rp.card.set_done(connected and self.arm.homed)
@@ -741,11 +896,13 @@ class MainWindow(QMainWindow):
         rp.grip_btn.setEnabled(connected and self.arm.homed and not homing)
         rp.set_gripper_state(self.arm.gripper_closed if connected else None)
         cp.arm_btn.setEnabled((armed or self.can_arm()) and self.parking is None)
-        cp.arm_btn.setText("DISARM" if armed else "ARM - enable motion")
+        cp.arm_btn.setText("DISARM" if armed else "Preparing…" if self.prep else "ARM - enable motion")
         theme.set_role(cp.arm_btn, "outline" if armed else "success")
         simulated = connected and isinstance(self.arm.backend, SimulatedBackend)
         if self.parking:
             cp.state_banner.set("PARKING the arm, then closing (Space/Esc stops it).", "warn")
+        elif self.prep:
+            cp.state_banner.set("PREPARING - the arm is moving. Keep clear (Space/Esc stops it).", "warn")
         elif armed and simulated:
             cp.state_banner.set("ARMED - simulation only, the real arm will not move.", "accent")
         elif armed:
@@ -790,6 +947,14 @@ class MainWindow(QMainWindow):
         mode = cp.mode.currentData()
         emg_ok = (mode != "keyboard" and self.link_state == LinkState.STREAMING and self.model_loaded
                   and now - self.last_batch_t <= float(self.config["filter"]["emg_timeout_s"]))
+        issued = time.perf_counter()
+        self.pipeline.expire(issued)
+        if key_motions or key_grip:
+            self.pipeline.cause = "keyboard / buttons"
+        else:                                  # otherwise keep the last cause: packets that brake a move belong to it
+            m = self.mapping.get(self.gesture_filter.stable)
+            if emg_ok and m and m.kind in ("continuous", "oneshot"):
+                self.pipeline.cause = "gesture"
         try:
             status = self.teleop.tick(now, key_motions, key_grip, emg_ok)
         except Exception as exc:
@@ -806,6 +971,13 @@ class MainWindow(QMainWindow):
         cp.grip_hint.setText(status["hint"] if emg_ok else "")
         cp.action_label.setText(f"{status['motion'].upper()}  ({status['source']})" if status["motion"] else "HOLD")
         self.last_status = status
+        going_home = []
+        for gesture, servos in status["commanded"]:
+            if status["home"] and set(servos) == set(self.arm.home_pose):
+                going_home.append((gesture, servos))     # its packet is written by go_home below
+            else:
+                self.pipeline.commanded(gesture, servos, issued,
+                                        f"Up/Down now moves the {status['switched']}" if status["switched"] else "")
         if status["switched"]:
             cp.vertical.setCurrentIndex(cp.vertical.findData(status["switched"]))
             self.log("switch_joint", note=status["switched"], source=status["source"])
@@ -815,6 +987,8 @@ class MainWindow(QMainWindow):
             self.log("goto", note=f"servo {status['goto'][0]} -> {status['goto'][1]}", source=status["source"])
         if status["home"]:
             record("info", "gesture", "Gesture requested: go home")
+            for gesture, servos in going_home:           # before go_home disarms and closes what is still open
+                self.pipeline.commanded(gesture, servos, issued)
             self.go_home(confirm=False)
             return
         if status["motion"] or status["gripper"]:
@@ -879,6 +1053,7 @@ class MainWindow(QMainWindow):
 
     def on_mapping_saved(self):
         self.gesture_filter.reset()
+        self.pipeline.forget_votes()
         if self.teleop:
             self.teleop.commands.reset()
         if self.loaded:
@@ -969,6 +1144,8 @@ class MainWindow(QMainWindow):
         self.start_parking()
 
     def start_parking(self):
+        self._cancel_preparation()
+        self.pipeline.cause = "parking"
         self.parking = "home"
         self.park_aborted = False
         self.disarm("Closing: parking the arm at home first (Space/Esc stops it)")

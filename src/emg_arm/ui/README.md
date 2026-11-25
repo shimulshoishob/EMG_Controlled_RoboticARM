@@ -18,6 +18,8 @@ PyQt5, Fusion style on every platform, light / dark / pink themes, always-visibl
 | [`theme.py`](theme.py) | colour tokens and stylesheet, macOS/Windows fonts, light/dark/pink, title-bar colour |
 | [`widgets.py`](widgets.py) | `Card`, `Banner`, `Chip`, `Segmented`, `Stat`, `SignalScope`… colours come from roles, never from the widgets |
 | [`icons.py`](icons.py) | sidebar line icons, drawn from inline SVG in the colours of the current theme |
+| [`sound.py`](sound.py) | the computer beep when Up/Down switches between shoulder and elbow |
+| [`branding.py`](branding.py) | the app logo in the title bar, taskbar and Dock. Files in `assets/`: `logo.png` (master, also in the project README), `app.ico` (Windows), `app.icns` (macOS), `app_ios_1024.png` (opaque square for an iOS app; not used by this desktop app) |
 | [`dialogs.py`](dialogs.py) | first-time Wi-Fi setup over USB, and the *Connection setup* check |
 | [`tasks.py`](tasks.py) | run a blocking function off the GUI thread and get the result back as a signal |
 | [`pages/`](pages/README.md) | one module per screen |
@@ -27,7 +29,7 @@ PyQt5, Fusion style on every platform, light / dark / pink themes, always-visibl
 | Group | Page |
 |---|---|
 | **Robotic arm** | Arm control |
-| **EMG & model** | Gesture model · Armband · Live monitor · Gesture mapping |
+| **EMG & model** | Gesture model · Armband · Live monitor · Log portal · Gesture mapping |
 | **Settings** | Settings & data |
 
 ## Timers

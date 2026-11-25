@@ -18,9 +18,11 @@ class ArmPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
 
-        card = Card("Connect the arm", "Use its 7.5 V supply. It then moves home by itself: keep clear.", step=1)
+        card = Card("Connect the arm", "Use its 7.5 V supply and keep clear: it then goes to rest, or if already there "
+                    "works the gripper once.", step=1)
         card.setToolTip("Power the xArm 1S from its own 7.5 V supply; USB is only for data. Close any other program that "
-                        "controls the arm. After connecting, the arm moves slowly to its home pose.")
+                        "controls the arm. After connecting and when you press ARM, the arm moves slowly to its rest pose. "
+                        "If it is already there, the gripper closes and opens once instead, so remove anything it holds.")
         self.card = card
         top = QHBoxLayout()
         top.setSpacing(10)

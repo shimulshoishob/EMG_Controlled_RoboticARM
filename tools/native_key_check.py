@@ -64,8 +64,9 @@ def main():
     cp = w.pages["control"]
     cp.mode.setCurrentIndex(cp.mode.findData("keyboard"))
     w.toggle_arm()
-    w.arm.homed = True
+    pump(2.0)                                            # the automatic rest / gripper routine
     w.toggle_armed()
+    pump(2.0)                                            # it runs again before motion is enabled
     w.go_to("control")
     pump(0.3)
     cg = load_quartz()

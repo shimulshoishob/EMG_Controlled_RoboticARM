@@ -23,6 +23,7 @@ The UI tests run Qt **offscreen** (`QT_QPA_PLATFORM=offscreen` is set for you). 
 | [`test_keyboard.py`](test_keyboard.py) | hold/release/combine keys, focus rules, re-assignment, STOP, modes |
 | [`test_integration.py`](test_integration.py) | the real window: navigation, mapping editor, safety on link/arm failure, configuration files, model list |
 | [`test_ui_smoke.py`](test_ui_smoke.py) | the real window end to end: streaming through the UI, wrong key message, auto-home and gripper toggle, hidden sections |
+| [`test_routine_and_log.py`](test_routine_and_log.py) | joint-switch beep, rest / gripper routine and STOP during it, inference timing, pipeline log and Log portal page |
 | [`test_model_loading.py`](test_model_loading.py) | loading gesture bundles: decision rate, sidecar info, friendly errors |
 | [`fake_armband.py`](fake_armband.py) | **helper, not a test**: a software copy of the armband firmware that can lose replies and data, reboot and go silent. Run alone: `python tests/fake_armband.py --key <key>` |
 

@@ -98,11 +98,17 @@ class KeyboardControlTests(unittest.TestCase):
         self.w.close_ready = True
         self.w.close()
 
+    def settle(self, timeout=5.0):
+        end = time.time() + timeout
+        while self.w.prep and time.time() < end:
+            pump(0.05)
+        self.assertIsNone(self.w.prep)
+
     def arm(self):
         self.w.toggle_arm()                                  # simulated arm (no xArm plugged in)
-        pump(0.4)                                            # it homes by itself after connecting
-        self.w.arm.homed = True
+        self.settle()                                        # the rest routine runs by itself after connecting
         self.w.toggle_armed()
+        self.settle()                                        # ... and again before motion is enabled
         self.assertTrue(self.w.is_armed())
         self.w.go_to("control")
         pump(0.05)

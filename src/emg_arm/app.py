@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import QApplication
 
 from .arm.driver import load_config
 from .settings import Settings
-from .ui import theme
+from .ui import branding, theme
 from .app_log import setup_file_logging
 from .ui.main_window import MainWindow, console
 
@@ -23,9 +23,11 @@ def main(argv=None):
 
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    branding.set_windows_app_id()                 # before any window, so the taskbar shows our logo
     app = QApplication(argv)
     app.setApplicationName("EMG Robotic Arm")
     app.setOrganizationName("BioWave")
+    app.setWindowIcon(branding.app_icon())
     setup_file_logging()
     settings = Settings()
     theme.apply_theme(app, settings.get("theme"))
@@ -55,6 +57,7 @@ def main(argv=None):
 
     sys.excepthook = on_error
     app.applicationStateChanged.connect(lambda state: state != Qt.ApplicationActive and window.keyboard.release_all())
+    branding.set_windows_fallback_icon(window)    # before show(): the taskbar button is created then
     window.show()
     theme.apply_title_bar(window)
     sys.exit(app.exec_())

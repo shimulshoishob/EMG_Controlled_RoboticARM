@@ -15,6 +15,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 from .features import extract_window_features
 from ..paths import PROJECT_ROOT
+from ..telemetry import Timing
 
 try:  # models saved with another scikit-learn version still work; don't nag
     from sklearn.exceptions import InconsistentVersionWarning
@@ -114,7 +115,7 @@ def load_model(path) -> LoadedModel:
 
 class InferenceWorker(QThread):
     """Extracts features from the newest window and predicts. Older windows are skipped, not queued."""
-    prediction_ready = pyqtSignal(str, float)
+    prediction_ready = pyqtSignal(str, float, object)     # label, confidence, telemetry.Timing
     error = pyqtSignal(str)
 
     def __init__(self, sample_rate=500):
@@ -128,16 +129,19 @@ class InferenceWorker(QThread):
         self._event = threading.Event()
         self._reported = False
         self._submitted_at = 0.0
+        self._signal = (0.0, None)        # (arrival of the newest samples, seconds since the previous window)
         self.last_latency_s = -1.0        # newest window handed in -> prediction ready (measured)
 
     def load_model(self, model, class_names):
         with self._lock:
             self.model, self.class_names = model, list(class_names)
 
-    def submit_window(self, window):
+    def submit_window(self, window, arrived=None, since_previous=None):
+        """``arrived``: time.perf_counter() when the newest samples reached this computer."""
         with self._lock:
             self._window = window
             self._submitted_at = time.monotonic()
+            self._signal = (time.perf_counter() if arrived is None else arrived, since_previous)
         self._event.set()
 
     def run(self):
@@ -151,25 +155,36 @@ class InferenceWorker(QThread):
             with self._lock:
                 win, model, classes, self._window = self._window, self.model, self.class_names, None
                 t_submit = self._submitted_at
+                arrived, since_previous = self._signal
             if win is None or model is None:
                 continue
             try:
-                if hasattr(model, "predict_window"):          # Model_Training bundle: raw (samples, channels) in
-                    label, conf = model.predict_window(win.T)
-                    self.last_latency_s = time.monotonic() - t_submit
-                    self.prediction_ready.emit(str(label), float(conf))
-                    continue
-                feats = extract_window_features(win, sample_rate=self.sample_rate).reshape(1, -1)
-                if hasattr(model, "predict_proba"):
-                    proba = model.predict_proba(feats)[0]
+                start, prepared = time.perf_counter(), None
+                if all(hasattr(model, a) for a in ("transform", "classes", "model")):
+                    # Model_Training bundle: the same two steps as model.predict_window, timed separately
+                    features = model.transform(win.T)
+                    prepared = time.perf_counter()
+                    proba = model.model.predict_proba(features)[0]
                     idx = int(np.argmax(proba))
-                    conf = float(proba[idx])
-                    best = list(getattr(model, "classes_", range(len(proba))))[idx]
+                    label, conf = str(model.classes[idx]), float(proba[idx])
+                elif hasattr(model, "predict_window"):        # raw (samples, channels) in, no split available
+                    label, conf = model.predict_window(win.T)
+                    label, conf = str(label), float(conf)
                 else:
-                    best, conf = model.predict(feats)[0], 1.0
-                label = classes[best] if isinstance(best, (int, np.integer)) and 0 <= best < len(classes) else str(best)
+                    feats = extract_window_features(win, sample_rate=self.sample_rate).reshape(1, -1)
+                    prepared = time.perf_counter()
+                    if hasattr(model, "predict_proba"):
+                        proba = model.predict_proba(feats)[0]
+                        idx = int(np.argmax(proba))
+                        conf = float(proba[idx])
+                        best = list(getattr(model, "classes_", range(len(proba))))[idx]
+                    else:
+                        best, conf = model.predict(feats)[0], 1.0
+                    label = classes[best] if isinstance(best, (int, np.integer)) and 0 <= best < len(classes) \
+                        else str(best)
+                timing = Timing(arrived, start, prepared, time.perf_counter(), since_previous)
                 self.last_latency_s = time.monotonic() - t_submit
-                self.prediction_ready.emit(label, conf)
+                self.prediction_ready.emit(label, conf, timing)
             except Exception as exc:                      # report once, keep running
                 if not self._reported:
                     self._reported = True

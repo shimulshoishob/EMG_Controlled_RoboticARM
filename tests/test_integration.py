@@ -33,6 +33,14 @@ def pump(seconds=0.05):
         time.sleep(0.005)
 
 
+def settle(w, timeout=5.0):
+    """Wait for the automatic rest / gripper routine to finish."""
+    end = time.time() + timeout
+    while w.prep and time.time() < end:
+        pump(0.05)
+    assert w.prep is None
+
+
 class IntegrationBase(unittest.TestCase):
     def make_window(self, folder=None):
         theme.apply_theme(APP, "light")
@@ -56,16 +64,16 @@ class IntegrationBase(unittest.TestCase):
         if mode != "keyboard":                       # otherwise arming opens a modal "gestures not available" question
             w.link_state, w.model_loaded = LinkState.STREAMING, True
         w.toggle_arm()
-        pump(0.4)                                    # the arm homes by itself after connecting
-        w.arm.homed = True
+        settle(w)                                    # the rest routine runs by itself after connecting
         w.toggle_armed()
+        settle(w)                                    # ... and again before motion is enabled
         assert w.is_armed()
 
 
 class NavigationTests(IntegrationBase):
     def test_all_sections_exist_and_open(self):
         w = self.make_window()
-        wanted = {"control", "model", "armband", "monitor", "mapping", "data"}
+        wanted = {"control", "model", "armband", "monitor", "log", "mapping", "data"}
         self.assertEqual({p[0] for p in PAGES}, wanted)
         for key, *_ in PAGES:
             w.go_to(key)
