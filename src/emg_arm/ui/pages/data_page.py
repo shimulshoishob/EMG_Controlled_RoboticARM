@@ -7,11 +7,10 @@ from typing import Dict
 
 from PyQt5.QtCore import QUrl, pyqtSignal
 from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import (QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLineEdit, QSpinBox, QVBoxLayout,
-                             QWidget)
+from PyQt5.QtWidgets import QDoubleSpinBox, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
 
 from ...paths import RECORDINGS_DIR
-from ..widgets import Banner, Card, button, label, two_columns
+from ..widgets import Banner, Card, ComboBox, DoubleSpinBox, SpinBox, button, label, two_columns
 
 # key -> (label, min, max, step, suffix, default-from-config)
 TUNING_FIELDS = {
@@ -47,7 +46,7 @@ class DataPage(QWidget):
         root.addLayout(columns)
 
         c3 = Card("Appearance", "Colour theme of the whole app.")
-        self.theme_combo = QComboBox()
+        self.theme_combo = ComboBox()
         for key, text in (("auto", "Match my system"), ("light", "Light"), ("dark", "Dark"), ("pink", "Pink")):
             self.theme_combo.addItem(text, key)
         self.theme_combo.setCurrentIndex(max(0, self.theme_combo.findData(theme_mode)))
@@ -83,14 +82,14 @@ class DataPage(QWidget):
                 continue
             lo, hi = int(servo["min"]), int(servo["max"])
             g2.addWidget(label(f"{servo['name'].replace('_', ' ').title()}  (servo {sid})"), r, 0)
-            mn, mx = QSpinBox(), QSpinBox()
+            mn, mx = SpinBox(), SpinBox()
             for w, v in ((mn, lo), (mx, hi)):
                 w.setRange(lo, hi)
                 w.setValue(v)
                 w.editingFinished.connect(w.clearFocus)
             home = None
             if str(sid) in arm["home"]:
-                home = QSpinBox()
+                home = SpinBox()
                 home.setRange(lo, hi)
                 home.setValue(int(arm["home"][str(sid)]))
                 home.editingFinished.connect(home.clearFocus)
@@ -120,7 +119,7 @@ class DataPage(QWidget):
         self.tuning: Dict[str, QDoubleSpinBox] = {}
         for r, (key, (text, lo, hi, step, suffix, _)) in enumerate(TUNING_FIELDS.items()):
             grid.addWidget(label(text, "muted"), r // 2, (r % 2) * 2)
-            w = QDoubleSpinBox()
+            w = DoubleSpinBox()
             w.setRange(lo, hi)
             w.setSingleStep(step)
             w.setDecimals(2 if step < 1 else 0)

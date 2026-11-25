@@ -135,7 +135,7 @@ keyboard (arrows, WASD, release, repeat, combos, focus, remap, STOP); jitter met
 
 1. `python tools/check_arm.py` (read-only) passes; voltage ≥ 7.0 V.
 2. Connection → Robotic arm → Go home; verify every servo reaches home.
-3. Keyboard only: A/← and D/→ rotate the base the right way, release brings the servo to rest within ~0.3 s (jerk-limited stop), holding 5 s keeps moving smoothly; W/S, E/Q, G, 1/2.
+3. Keyboard only: A/← and D/→ rotate the base the right way, release brings the servo to rest within ~0.3 s (jerk-limited stop), holding 5 s keeps moving smoothly; I/K, O/L, G, S/E.
 4. **Base jitter:** jog the base at 10, 20, 50, 100 u/s with *Settings → smoothing* defaults, then with `match_duration:false`, `min_speed 0`, `min_lead 0`; compare by ear/eye and note any speed where it still buzzes (try raising min speed/lead).
 5. Gestures (armband on, model with the 10 classes): each of the ten does what the mapping says; hold Closed Fist for 10 s → gripper toggles once.
 6. Safety: switch the armband off while a gesture is active (arm must stop within ~0.5 s: 0.25 s command timeout + ~0.3 s jerk-limited stop); unplug the arm USB while moving (app must disarm and report); Space/Esc during homing.

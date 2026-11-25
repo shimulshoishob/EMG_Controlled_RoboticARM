@@ -66,7 +66,8 @@ def import_bundle(path: Path, store: MappingStore, keymap, settings) -> None:
         problems = errors(validate(mappings, store.config))
         if problems:
             raise MappingError("; ".join(f"{i.gesture_id}: {i.message}" for i in problems))
-    bindings = keymap.parse(data["keymap"]["bindings"]) if "keymap" in data else None
+    saved_keys = data.get("keymap")
+    bindings = keymap.parse(saved_keys["bindings"], int(saved_keys.get("version", 1))) if "keymap" in data else None
     new_settings = {k: v for k, v in (data.get("settings") or {}).items() if k in SETTING_KEYS}
     if new_settings.get("control_mode") not in (None, "hybrid", "gestures", "keyboard"):
         raise ValueError("unknown control mode")

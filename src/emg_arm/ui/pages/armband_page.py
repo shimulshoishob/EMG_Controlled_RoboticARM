@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtWidgets import (QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
-                             QMessageBox, QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QFileDialog, QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+                             QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from ...armband import control, netinfo, serial_setup
 from ...armband.link import LinkState, LinkStats
@@ -16,7 +16,7 @@ from .. import theme
 from ..bridge import ArmbandBridge
 from ..dialogs import DoctorDialog, UsbSetupDialog
 from ..tasks import run_task
-from ..widgets import Banner, Card, Segmented, SignalScope, Stat, button, label, section
+from ..widgets import Banner, Card, ComboBox, Segmented, SignalScope, Stat, button, label, section
 
 STATE_TONE = {LinkState.IDLE: "none", LinkState.CONNECTING: "accent", LinkState.STREAMING: "good",
               LinkState.STALLED: "warn", LinkState.RECONNECTING: "warn", LinkState.FAILED: "bad"}
@@ -146,7 +146,7 @@ class ArmbandPage(QWidget):
     def _build_usb(self) -> QWidget:
         c = Card("Choose the USB port", "Plug the armband into this computer. Data is sent over the cable, no Wi-Fi needed.", step=1)
         row = QHBoxLayout()
-        self.port_combo = QComboBox()
+        self.port_combo = ComboBox()
         self.port_combo.setMinimumWidth(360)
         row.addWidget(self.port_combo, 1)
         row.addWidget(button("Refresh", slot=self.refresh_ports))
