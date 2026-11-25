@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import List
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFrame, QHBoxLayout,
-                             QLabel, QLineEdit, QScrollArea, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QDialog, QFrame, QHBoxLayout, QLineEdit, QScrollArea,
+                             QVBoxLayout, QWidget)
 
 from ..armband import diagnostics, netinfo, serial_setup
 from . import theme
 from .tasks import run_task
-from .widgets import Banner, Card, Dot, button, label
+from .widgets import Banner, Card, ComboBox, Dot, button, label
 
 
 class UsbSetupDialog(QDialog):
@@ -34,7 +34,7 @@ class UsbSetupDialog(QDialog):
         # -- step 1
         c1 = Card("Connect the armband with USB", "Use the armband's USB port (the one used to flash it).", step=1)
         row = QHBoxLayout()
-        self.port_combo = QComboBox()
+        self.port_combo = ComboBox()
         self.port_combo.setMinimumWidth(320)
         row.addWidget(self.port_combo, 1)
         row.addWidget(button("Refresh", slot=self.refresh_ports))

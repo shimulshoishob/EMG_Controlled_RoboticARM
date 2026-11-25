@@ -40,7 +40,7 @@ STOP_KEYS = (Qt.Key_Space, Qt.Key_Escape)
 MODIFIER_KEYS = (Qt.Key_Shift, Qt.Key_Control, Qt.Key_Meta, Qt.Key_Alt, Qt.Key_AltGr, Qt.Key_CapsLock,
                  Qt.Key_NumLock, Qt.Key_ScrollLock, Qt.Key_unknown)
 COMBO_MODIFIERS = Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier   # Ctrl on Windows, Cmd on macOS
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -73,9 +73,23 @@ def build_actions(config: dict) -> List[KeyAction]:
 DEFAULT_KEYS: Dict[str, List[str]] = {
     "base_left": ["Left", "A"], "base_right": ["Right", "D"],
     "joint_up": ["Up"], "joint_down": ["Down"],
-    "shoulder_up": ["W"], "shoulder_down": ["S"], "elbow_up": ["E"], "elbow_down": ["Q"],
-    "gripper_toggle": ["G"], "select_shoulder": ["1"], "select_elbow": ["2"],
+    "shoulder_up": ["I"], "shoulder_down": ["K"], "elbow_up": ["O"], "elbow_down": ["L"],
+    "gripper_toggle": ["G"], "select_shoulder": ["S"], "select_elbow": ["E"],
 }
+
+# Defaults of version 1 (number keys selected the joint, which stopped people typing 1 and 2 into number fields)
+V1_DEFAULTS: Dict[str, List[str]] = {
+    "shoulder_up": ["W"], "shoulder_down": ["S"], "elbow_up": ["E"], "elbow_down": ["Q"],
+    "select_shoulder": ["1"], "select_elbow": ["2"],
+}
+
+
+def upgrade_bindings(raw: dict, version: int) -> dict:
+    """Saved maps hold every key, so move those still at an old default to the new one. Keys the user
+    chose stay as they are."""
+    if version >= SCHEMA_VERSION:
+        return raw
+    return {aid: DEFAULT_KEYS[aid] if V1_DEFAULTS.get(aid) == names else names for aid, names in raw.items()}
 
 
 def key_name(key: int) -> str:
@@ -153,10 +167,11 @@ class KeyMap:
         self.bindings = trial
         self.save()
 
-    def parse(self, raw: Dict[str, List[str]]) -> Dict[str, List[int]]:
+    def parse(self, raw: Dict[str, List[str]], version: int = SCHEMA_VERSION) -> Dict[str, List[int]]:
         """Key names -> key codes for every known action, validated. Raises ValueError."""
         if not isinstance(raw, dict):
             raise ValueError("keyboard map must be an object")
+        raw = upgrade_bindings(raw, version)
         parsed = {a.id: [key_from_name(n) for n in raw.get(a.id, DEFAULT_KEYS.get(a.id, []))] for a in self.actions}
         problems = self.check(parsed, self.by_id)
         if problems:
@@ -181,7 +196,7 @@ class KeyMap:
         try:
             with open(self.path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            raw = data["bindings"]
+            raw = upgrade_bindings(dict(data["bindings"]), int(data.get("version", 1)))
             loaded = {a.id: [key_from_name(n) for n in raw.get(a.id, DEFAULT_KEYS.get(a.id, []))]
                       for a in self.actions}
             problems = self.check(loaded, self.by_id)

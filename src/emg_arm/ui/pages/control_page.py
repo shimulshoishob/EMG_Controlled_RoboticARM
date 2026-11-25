@@ -4,11 +4,10 @@ buttons or keys."""
 from __future__ import annotations
 
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, QProgressBar, QSpinBox, QVBoxLayout,
-                             QWidget)
+from PyQt5.QtWidgets import QComboBox, QFrame, QGridLayout, QProgressBar, QVBoxLayout, QWidget
 
 from .. import theme
-from ..widgets import Banner, Card, button, label, section, two_columns
+from ..widgets import Banner, Card, ComboBox, DoubleSpinBox, SpinBox, button, label, section, two_columns
 from .arm_page import ArmPage
 from .keyboard_page import DrivePanel
 
@@ -63,7 +62,7 @@ class ControlPage(QWidget):
             form.addWidget(label(text, "caption"), row * 2, column)
             form.addWidget(widget, row * 2 + 1, column)
 
-        self.mode = QComboBox()
+        self.mode = ComboBox()
         self.mode.addItem("Keys + gestures", "hybrid")
         self.mode.addItem("Gestures only", "gestures")
         self.mode.addItem("Keyboard only", "keyboard")
@@ -72,17 +71,17 @@ class ControlPage(QWidget):
         self.mode.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.mode.setMinimumContentsLength(10)
         field("Control mode", self.mode, 0, 0)
-        self.vertical = QComboBox()
+        self.vertical = ComboBox()
         for name in config["vertical_joints"]:
             self.vertical.addItem(name.capitalize(), name)
         field("Up / Down moves", self.vertical, 0, 1)
-        self.speed = QSpinBox()
+        self.speed = SpinBox()
         self.speed.setRange(10, int(config["arm"]["hard_max_speed_units_per_s"]))
         self.speed.setSingleStep(10)
         self.speed.editingFinished.connect(self.speed.clearFocus)
         self.speed.setValue(int(config["arm"]["default_speed_units_per_s"]))
         field("Speed (units/s)", self.speed, 1, 0)
-        self.conf = QDoubleSpinBox()
+        self.conf = DoubleSpinBox()
         self.conf.setRange(40, 99)
         self.conf.setSuffix(" %")
         self.conf.setValue(gesture_min_conf * 100)

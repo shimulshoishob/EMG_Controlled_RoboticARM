@@ -8,8 +8,8 @@ from typing import List, Optional
 import numpy as np
 from PyQt5.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
-                             QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QAbstractSpinBox, QButtonGroup, QComboBox, QDoubleSpinBox, QFrame, QHBoxLayout, QLabel,
+                             QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
 
 from . import theme
 
@@ -54,6 +54,36 @@ def button(text: str, role: str = None, tooltip: str = "", slot=None) -> QPushBu
     if slot:
         b.clicked.connect(slot)
     return b
+
+
+# Values are typed (or picked from the list), never changed by the mouse wheel: scrolling a page must not
+# silently change the arm's speed or a setting that happens to be under the pointer.
+class _NoWheel:
+    def wheelEvent(self, event):
+        event.ignore()                              # the page behind still scrolls
+
+
+class _NumberBox(_NoWheel):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.setFocusPolicy(Qt.StrongFocus)         # the wheel does not give focus either
+
+
+class SpinBox(_NumberBox, QSpinBox):
+    """A whole-number field without up/down arrows."""
+
+
+class DoubleSpinBox(_NumberBox, QDoubleSpinBox):
+    """A decimal-number field without up/down arrows."""
+
+
+class ComboBox(_NoWheel, QComboBox):
+    """A drop-down that only changes when you pick from it."""
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setFocusPolicy(Qt.StrongFocus)
 
 
 class Dot(QLabel):

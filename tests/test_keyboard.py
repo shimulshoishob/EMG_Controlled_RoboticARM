@@ -7,6 +7,7 @@ delivery (Cocoa / Win32); see the README hardware/OS checklist for the manual pa
     python -m unittest tests.test_keyboard -v
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -47,8 +48,9 @@ class KeyMapTests(unittest.TestCase):
     def test_defaults_include_arrows_and_wasd(self):
         for key, action in ((Qt.Key_Left, "base_left"), (Qt.Key_Right, "base_right"), (Qt.Key_Up, "joint_up"),
                             (Qt.Key_Down, "joint_down"), (Qt.Key_A, "base_left"), (Qt.Key_D, "base_right"),
-                            (Qt.Key_W, "shoulder_up"), (Qt.Key_S, "shoulder_down"), (Qt.Key_E, "elbow_up"),
-                            (Qt.Key_Q, "elbow_down"), (Qt.Key_G, "gripper_toggle")):
+                            (Qt.Key_I, "shoulder_up"), (Qt.Key_K, "shoulder_down"), (Qt.Key_O, "elbow_up"),
+                            (Qt.Key_L, "elbow_down"), (Qt.Key_G, "gripper_toggle"), (Qt.Key_S, "select_shoulder"),
+                            (Qt.Key_E, "select_elbow")):
             self.assertEqual(self.km.action_for(key).id, action, key_name(key))
 
     def test_space_and_escape_are_reserved(self):
@@ -63,10 +65,25 @@ class KeyMapTests(unittest.TestCase):
         self.assertEqual(self.km.keys_for("shoulder_up"), before)
 
     def test_remap_persists(self):
-        self.km.assign("shoulder_up", [Qt.Key_I])
+        self.km.assign("shoulder_up", [Qt.Key_U])
         again = KeyMap(build_actions(CONFIG), self.path)
-        self.assertEqual(again.keys_for("shoulder_up"), [Qt.Key_I])
-        self.assertIsNone(again.action_for(Qt.Key_W))
+        self.assertEqual(again.keys_for("shoulder_up"), [Qt.Key_U])
+        self.assertIsNone(again.action_for(Qt.Key_I))
+
+    def test_number_keys_are_free_for_typing(self):
+        for key in range(Qt.Key_0, Qt.Key_9 + 1):
+            self.assertIsNone(self.km.action_for(key), key_name(key))
+
+    def test_old_saved_map_moves_to_the_new_keys_but_keeps_chosen_ones(self):
+        old = {"shoulder_up": ["U"], "shoulder_down": ["S"], "elbow_up": ["E"], "elbow_down": ["Q"],
+               "select_shoulder": ["1"], "select_elbow": ["2"]}
+        self.path.write_text(json.dumps({"version": 1, "bindings": old}), encoding="utf-8")
+        km = KeyMap(build_actions(CONFIG), self.path)
+        self.assertEqual(km.load_warning, "")
+        self.assertEqual(km.keys_for("shoulder_up"), [Qt.Key_U])           # chosen by the user: kept
+        for key, action in ((Qt.Key_S, "select_shoulder"), (Qt.Key_E, "select_elbow"), (Qt.Key_K, "shoulder_down"),
+                            (Qt.Key_O, "elbow_up"), (Qt.Key_L, "elbow_down")):
+            self.assertEqual(km.action_for(key).id, action, key_name(key))
 
     def test_corrupt_file_falls_back(self):
         self.path.write_text("{", encoding="utf-8")
@@ -118,7 +135,7 @@ class KeyboardControlTests(unittest.TestCase):
 
     def test_arrows_and_wasd_move_and_release_stops(self):
         self.arm()
-        cases = {Qt.Key_Left: 6, Qt.Key_A: 6, Qt.Key_W: 5, Qt.Key_S: 5, Qt.Key_E: 4, Qt.Key_Q: 4,
+        cases = {Qt.Key_Left: 6, Qt.Key_A: 6, Qt.Key_I: 5, Qt.Key_K: 5, Qt.Key_O: 4, Qt.Key_L: 4,
                  Qt.Key_Up: 5, Qt.Key_Down: 5, Qt.Key_Right: 6, Qt.Key_D: 6}
         for key, servo in cases.items():
             before = self.w.arm.targets[servo]
@@ -217,10 +234,10 @@ class KeyboardControlTests(unittest.TestCase):
         self.arm()
         start = dict(self.w.arm.targets)
         QTest.keyPress(self.w, Qt.Key_A)
-        QTest.keyPress(self.w, Qt.Key_W)
+        QTest.keyPress(self.w, Qt.Key_I)
         pump(0.5)
         QTest.keyRelease(self.w, Qt.Key_A)
-        QTest.keyRelease(self.w, Qt.Key_W)
+        QTest.keyRelease(self.w, Qt.Key_I)
         pump(0.2)
         self.assertNotEqual(self.w.arm.targets[6], start[6])
         self.assertNotEqual(self.w.arm.targets[5], start[5])
@@ -231,21 +248,21 @@ class KeyboardControlTests(unittest.TestCase):
         QTest.keyClick(self.w, Qt.Key_G)
         pump(0.2)
         self.assertNotEqual(self.w.arm.gripper_closed, before)
-        QTest.keyClick(self.w, Qt.Key_2)
+        QTest.keyClick(self.w, Qt.Key_E)
         pump(0.2)
         self.assertEqual(self.cp.vertical.currentData(), "elbow")
 
     def test_remapped_key_works_and_old_key_does_not(self):
-        self.w.keymap.assign("shoulder_up", [Qt.Key_I])
+        self.w.keymap.assign("shoulder_up", [Qt.Key_U])
         self.arm()
         before = self.w.arm.targets[5]
-        QTest.keyPress(self.w, Qt.Key_W)
+        QTest.keyPress(self.w, Qt.Key_I)                  # the old key
         pump(0.3)
-        QTest.keyRelease(self.w, Qt.Key_W)
-        self.assertEqual(self.w.arm.targets[5], before)
-        QTest.keyPress(self.w, Qt.Key_I)
-        pump(0.4)
         QTest.keyRelease(self.w, Qt.Key_I)
+        self.assertEqual(self.w.arm.targets[5], before)
+        QTest.keyPress(self.w, Qt.Key_U)
+        pump(0.4)
+        QTest.keyRelease(self.w, Qt.Key_U)
         pump(0.2)
         self.assertNotEqual(self.w.arm.targets[5], before)
 

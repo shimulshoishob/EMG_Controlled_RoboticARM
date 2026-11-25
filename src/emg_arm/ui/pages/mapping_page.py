@@ -8,14 +8,14 @@ from typing import Dict, List, Optional
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor
-from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QListWidget,
-                             QListWidgetItem, QMessageBox, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QListWidget,
+                             QListWidgetItem, QMessageBox, QSizePolicy, QVBoxLayout, QWidget)
 
 from ...control.commands import CommandGenerator
 from ...control.gestures import BY_ID, GESTURES
 from ...control.mapping import ACTIONS, LONG_ACTIONS, VERTICAL, GestureMapping, MappingError, MappingStore, errors, validate
 from .. import theme
-from ..widgets import Banner, Card, button, label, two_columns
+from ..widgets import Banner, Card, ComboBox, DoubleSpinBox, SpinBox, button, label, two_columns
 
 
 class MappingPage(QWidget):
@@ -96,56 +96,56 @@ class MappingPage(QWidget):
                 grid.addWidget(h, r + 1, 1)
             self.rows[key] = (lab, widget, h)
 
-        self.action = QComboBox()
+        self.action = ComboBox()
         for aid, (text, _k) in ACTIONS.items():
             self.action.addItem(text, aid)
         add_row("action", "Robot action", self.action)
-        self.servo = QComboBox()
+        self.servo = ComboBox()
         add_row("servo", "Joint / servo", self.servo, "“Selected Up/Down joint” follows the shoulder/elbow switch.")
-        self.direction = QComboBox()
+        self.direction = ComboBox()
         self.direction.addItem("Positive (+)  increases the servo value / Up", 1)
         self.direction.addItem("Negative (−)  decreases the servo value / Down", -1)
         add_row("direction", "Direction", self.direction)
-        self.speed = QDoubleSpinBox()
+        self.speed = DoubleSpinBox()
         self.speed.setRange(0, self.cap)
         self.speed.setDecimals(0)
         self.speed.setSingleStep(10)
         self.speed.setSuffix(" units/s")
         self.speed.setSpecialValueText("Use the global speed")
         add_row("speed", "Movement speed", self.speed, f"Capped at {self.cap:g} units/s by the safety layer.")
-        self.target = QSpinBox()
+        self.target = SpinBox()
         self.target.setRange(0, 1000)
         add_row("target", "Target position", self.target, "xArm units. Must stay inside the servo's safe range.")
-        self.duration = QSpinBox()
+        self.duration = SpinBox()
         self.duration.setRange(300, 30000)
         self.duration.setSingleStep(100)
         self.duration.setSuffix(" ms")
         add_row("duration", "Move duration", self.duration)
-        self.hold = QDoubleSpinBox()
+        self.hold = DoubleSpinBox()
         self.hold.setRange(0, 10)
         self.hold.setSingleStep(0.1)
         self.hold.setDecimals(1)
         self.hold.setSuffix(" s")
         add_row("hold", "Hold before it fires", self.hold,
                 "Fires once per gesture. Leave the gesture and repeat it to trigger again.")
-        self.long_action = QComboBox()
+        self.long_action = ComboBox()
         for aid in LONG_ACTIONS:
             self.long_action.addItem("None" if aid == "none" else ACTIONS[aid][0], aid)
         add_row("long_action", "Longer hold does", self.long_action,
                 "Optional second action; the short action then fires when you relax.")
-        self.long_hold = QDoubleSpinBox()
+        self.long_hold = DoubleSpinBox()
         self.long_hold.setRange(0.2, 12)
         self.long_hold.setSingleStep(0.1)
         self.long_hold.setDecimals(1)
         self.long_hold.setSuffix(" s")
         add_row("long_hold", "Long-hold time", self.long_hold)
-        self.conf = QDoubleSpinBox()
+        self.conf = DoubleSpinBox()
         self.conf.setRange(0, 99)
         self.conf.setDecimals(0)
         self.conf.setSuffix(" %")
         self.conf.setSpecialValueText("Use the global threshold")
         add_row("conf", "Confidence threshold", self.conf, "Higher = fewer false triggers, slower response.")
-        self.model_label = QComboBox()
+        self.model_label = ComboBox()
         add_row("model_label", "Model class", self.model_label, "Automatic matches by name. Pick a class if your model names it differently.")
         for spin in (self.speed, self.conf):
             spin.setMinimumWidth(170)               # the "use the global ..." text would otherwise widen small windows

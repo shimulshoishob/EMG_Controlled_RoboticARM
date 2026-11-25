@@ -130,12 +130,12 @@ One-shot actions fire **once per gesture**: keep the gesture detected and nothin
 |---|---|---|---|
 | ← / A | base left | → / D | base right |
 | ↑ | selected joint up | ↓ | selected joint down |
-| W / S | shoulder up / down | E / Q | elbow up / down |
-| G | toggle gripper | 1 / 2 | Up/Down controls shoulder / elbow |
+| I / K | shoulder up / down | O / L | elbow up / down |
+| G | toggle gripper | S / E | Up/Down controls shoulder / elbow |
 | **Space / Esc** | **STOP (fixed)** | | |
 
 Hold to move, release to stop, hold several to combine. Keys only move the arm while ARMED and when no text box has focus; Ctrl/Cmd/Alt combinations are ignored.
-*Changed from before:* **D** was elbow-down and is now base-right (WASD-style); elbow-down moved to **Q**. Re-assign under *Show advanced keyboard controls* if you prefer the old layout.
+*Changed from before:* **S** and **E** now choose the shoulder or elbow (they were **1** / **2**), so numbers can be typed into fields. Direct shoulder keys moved to **I** / **K** and direct elbow keys to **O** / **L**. Re-assign under *Show advanced keyboard controls* if you prefer another layout.
 
 ## 🧪 Tests
 

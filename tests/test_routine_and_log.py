@@ -16,7 +16,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import numpy as np  # noqa: E402
-from PyQt5.QtWidgets import QApplication  # noqa: E402
+from PyQt5.QtCore import QPoint, QPointF, Qt  # noqa: E402
+from PyQt5.QtGui import QWheelEvent  # noqa: E402
+from PyQt5.QtTest import QTest  # noqa: E402
+from PyQt5.QtWidgets import QAbstractSpinBox, QApplication, QComboBox  # noqa: E402
 
 from emg_arm.arm.driver import SimulatedBackend, load_config  # noqa: E402
 from emg_arm.armband.link import LinkState  # noqa: E402
@@ -78,6 +81,43 @@ class BeepTests(WindowBase):
         self.assertEqual(len(self.beeps), 1)
         box.setCurrentIndex(box.findData("shoulder"))
         self.assertEqual(len(self.beeps), 2)
+
+
+class InputFieldTests(WindowBase):
+    def test_no_arrow_buttons_and_the_wheel_changes_nothing(self):
+        boxes = self.w.findChildren(QAbstractSpinBox)
+        self.assertGreater(len(boxes), 10)
+        for box in boxes:
+            self.assertEqual(box.buttonSymbols(), QAbstractSpinBox.NoButtons, box.parent())
+        for widget in boxes + self.w.findChildren(QComboBox):
+            before = widget.currentIndex() if isinstance(widget, QComboBox) else widget.value()
+            for delta in (120, -120):
+                wheel = QWheelEvent(QPointF(5, 5), QPointF(5, 5), QPoint(), QPoint(0, delta), Qt.NoButton,
+                                    Qt.NoModifier, Qt.NoScrollPhase, False)
+                QApplication.sendEvent(widget, wheel)
+            self.assertEqual(widget.currentIndex() if isinstance(widget, QComboBox) else widget.value(), before)
+
+    def test_numbers_can_be_typed_while_armed(self):
+        w = self.w
+        cp = w.pages["control"]
+        cp.mode.setCurrentIndex(cp.mode.findData("keyboard"))
+        w.activateWindow()
+        w.toggle_arm()
+        self.settle()
+        w.toggle_armed()
+        self.settle()
+        w.go_to("control")
+        pump(0.1)
+        cp.speed.setFocus()
+        cp.speed.selectAll()
+        QTest.keyClicks(cp.speed, "120")
+        self.assertEqual(cp.speed.value(), 120)
+        QTest.keyClick(w, Qt.Key_E)
+        pump(0.15)
+        self.assertEqual(cp.vertical.currentData(), "elbow")
+        QTest.keyClick(w, Qt.Key_S)
+        pump(0.15)
+        self.assertEqual(cp.vertical.currentData(), "shoulder")
 
 
 class RestRoutineTests(WindowBase):
